@@ -285,6 +285,7 @@ int display_draw_text(int16_t x, int16_t y, const char *text, uint16_t color, ui
 
 void display_flush(void) {
     if (!dirty) return;
+    mark_all_dirty();
 
     int16_t x1 = dirty_x1;
     int16_t y1 = dirty_y1;
