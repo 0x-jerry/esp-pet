@@ -1,14 +1,11 @@
 #include "buttons.h"
 #include "controller.h"
 #include "display.h"
-#include "my_platform.h"
+#include "xbox_ble.h"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include <btstack_port_esp32.h>
-#include <btstack_run_loop.h>
-#include <uni.h>
 
 static const char *TAG = "main";
 
@@ -167,13 +164,11 @@ void app_main(void) {
 
     display_init();
     buttons_init();
+    controller_init();
 
-    // Create display/pet task before Bluepad32 blocks the main task
+    // Create display/pet task before BTstack blocks the main task
     xTaskCreate(display_task, "display", 8192, NULL, 5, NULL);
 
-    // Init Bluepad32 + BTstack (blocks forever)
-    btstack_init();
-    my_platform_register();
-    uni_init(0, NULL);
-    btstack_run_loop_execute();
+    // Init BTstack + Xbox BLE HID host (blocks forever)
+    xbox_ble_init(1);
 }
