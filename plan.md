@@ -37,12 +37,12 @@
 |----------|------|-----------------------------|
 | SCLK     | 6    | SPI2 CLK (IO_MUX)           |
 | MOSI     | 7    | SPI2 MOSI (IO_MUX)          |
-| CS       | 16   | SPI2 CS0 (IO_MUX)           |
-| DC       | 0    | Data/Command, any GPIO      |
-| RST      | 8    | Display reset, any GPIO     |
-| BL        | 10   | Backlight, any GPIO (PWM)   |
-| BUTTON_A | 1    | "Action" button (feed/play) |
-| BUTTON_B | 2    | "Talk" button (AI chat)     |
+| CS       | 2    | SPI2 CS, any GPIO           |
+| DC       | 1    | Data/Command, any GPIO      |
+| RST      | 0    | Display reset, any GPIO     |
+| BL       | 3    | Backlight, any GPIO (PWM)   |
+| BTN_L    | 14   | "Action" button (feed/play) |
+| BTN_R    | 15   | "Talk" button (AI chat)     |
 
 ---
 

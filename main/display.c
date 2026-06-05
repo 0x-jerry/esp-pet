@@ -92,7 +92,7 @@ void display_init(void) {
     ledc_timer_config(&ledc_timer);
 
     ledc_channel_config_t ledc_channel = {
-        .gpio_num   = PIN_BL,
+        .gpio_num   = TFT_BL,
         .speed_mode = LEDC_MODE,
         .channel    = LEDC_CH,
         .intr_type  = LEDC_INTR_DISABLE,
@@ -104,8 +104,8 @@ void display_init(void) {
 
     // 2. Initialize SPI bus
     spi_bus_config_t bus_cfg = {
-        .sclk_io_num     = PIN_SCLK,
-        .mosi_io_num     = PIN_MOSI,
+        .sclk_io_num     = TFT_SCLK,
+        .mosi_io_num     = TFT_MOSI,
         .miso_io_num     = -1, // Not used
         .quadwp_io_num   = -1,
         .quadhd_io_num   = -1,
@@ -115,8 +115,8 @@ void display_init(void) {
 
     // 3. Create panel IO (SPI)
     esp_lcd_panel_io_spi_config_t io_cfg = {
-        .cs_gpio_num     = PIN_CS,
-        .dc_gpio_num     = PIN_DC,
+        .cs_gpio_num     = TFT_CS,
+        .dc_gpio_num     = TFT_DC,
         .spi_mode        = 0,
         .pclk_hz         = LCD_PCLK_HZ,
         .trans_queue_depth = 10,
@@ -127,7 +127,7 @@ void display_init(void) {
 
     // 4. Create ST7789 panel
     esp_lcd_panel_dev_config_t panel_cfg = {
-        .reset_gpio_num = PIN_RST,
+        .reset_gpio_num = TFT_RST,
         .rgb_ele_order  = LCD_RGB_ELEMENT_ORDER_RGB,
         .bits_per_pixel = 16,
     };
@@ -138,8 +138,8 @@ void display_init(void) {
     esp_lcd_panel_init(panel_handle);
 
     // 6. Set orientation (adjust if display is rotated)
-    esp_lcd_panel_mirror(panel_handle, true, false); // mirror x if needed
-    esp_lcd_panel_swap_xy(panel_handle, false);
+    // esp_lcd_panel_mirror(panel_handle, false, false); // mirror x if needed
+    // esp_lcd_panel_swap_xy(panel_handle, false);
 
     // 7. Turn on display
     esp_lcd_panel_disp_on_off(panel_handle, true);

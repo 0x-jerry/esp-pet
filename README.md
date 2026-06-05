@@ -16,12 +16,12 @@ A Tamagotchi-style AI virtual pet for the ESP32-C6, featuring an ST7789 240×240
 |--------|------|
 | SCLK   | 6    |
 | MOSI   | 7    |
-| CS     | 16   |
-| DC     | 0    |
-| RST    | 8    |
-| BL     | 10   |
-| BTN_A  | 1    |
-| BTN_B  | 2    |
+| CS     | 2    |
+| DC     | 1    |
+| RST    | 0    |
+| BL     | 3    |
+| BTN_L  | 14   |
+| BTN_R  | 15   |
 
 ## Status
 
@@ -49,7 +49,7 @@ A Tamagotchi-style AI virtual pet for the ESP32-C6, featuring an ST7789 240×240
 # Requires ESP-IDF v6.0.1+ installed
 eim run "idf.py set-target esp32c6"
 eim run "idf.py build"
-eim run "idf.py -p /dev/tty.usbmodem* flash monitor"
+eim run "idf.py flash"
 ```
 
 ## License

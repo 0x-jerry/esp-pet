@@ -8,12 +8,14 @@
 #define DISPLAY_HEIGHT 240
 
 // Pin configuration (ESP32-C6 SPI2 IOMUX)
-#define PIN_SCLK  6
-#define PIN_MOSI  7
-#define PIN_CS    16
-#define PIN_DC    0
-#define PIN_RST   8
-#define PIN_BL    10
+#define TFT_CS   2
+#define TFT_DC   1
+#define TFT_RST  0
+#define TFT_BL   3
+#define TFT_MOSI 7
+#define TFT_SCLK 6
+#define BTN_L    14
+#define BTN_R    15
 
 // Colors (RGB565)
 #define COLOR_BLACK   0x0000
