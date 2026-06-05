@@ -14,8 +14,6 @@
 #define TFT_BL   3
 #define TFT_MOSI 7
 #define TFT_SCLK 6
-#define BTN_L    14
-#define BTN_R    15
 
 // Colors (RGB565)
 #define COLOR_BLACK   0x0000

@@ -7,8 +7,8 @@
 #include "esp_lcd_types.h"
 #include "driver/spi_master.h"
 #include "driver/ledc.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "freertos/FreeRTOS.h"
 #include <string.h>
 
 static const char *TAG = "display";
@@ -133,18 +133,14 @@ void display_init(void) {
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(io_handle, &panel_cfg, &panel_handle));
 
-    // 5. Initialize panel
+    // 5. Initialize panel (orientation handled in software)
     esp_lcd_panel_reset(panel_handle);
     esp_lcd_panel_init(panel_handle);
 
-    // 6. Set orientation (adjust if display is rotated)
-    // esp_lcd_panel_mirror(panel_handle, false, false); // mirror x if needed
-    // esp_lcd_panel_swap_xy(panel_handle, false);
-
-    // 7. Turn on display
+    // 6. Turn on display
     esp_lcd_panel_disp_on_off(panel_handle, true);
 
-    // 8. Allocate framebuffer
+    // 7. Allocate framebuffer
     size_t fb_size = DISPLAY_WIDTH * DISPLAY_HEIGHT * sizeof(uint16_t);
     framebuffer = heap_caps_malloc(fb_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (framebuffer == NULL) {
@@ -161,6 +157,10 @@ void display_init(void) {
 
 // --- Drawing Primitives ---
 
+static inline uint16_t *fb_pixel(int16_t x, int16_t y) {
+    return &framebuffer[(DISPLAY_HEIGHT - 1 - y) * DISPLAY_WIDTH + (DISPLAY_WIDTH - 1 - x)];
+}
+
 uint16_t *display_get_framebuffer(void) {
     return framebuffer;
 }
@@ -175,7 +175,7 @@ void display_fill(uint16_t color) {
 
 void display_draw_pixel(int16_t x, int16_t y, uint16_t color) {
     if (x < 0 || x >= DISPLAY_WIDTH || y < 0 || y >= DISPLAY_HEIGHT) return;
-    framebuffer[y * DISPLAY_WIDTH + x] = color;
+    *fb_pixel(x, y) = color;
     mark_dirty(x, y, 1, 1);
 }
 
@@ -189,7 +189,7 @@ void display_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t colo
 
     for (int16_t row = y; row < y + h; row++) {
         for (int16_t col = x; col < x + w; col++) {
-            framebuffer[row * DISPLAY_WIDTH + col] = color;
+            *fb_pixel(col, row) = color;
         }
     }
     mark_dirty(x, y, w, h);
@@ -206,7 +206,7 @@ void display_draw_sprite(int16_t x, int16_t y, int16_t w, int16_t h, const uint1
     for (int16_t row = start_y; row < end_y; row++) {
         for (int16_t col = start_x; col < end_x; col++) {
             uint16_t color = data[row * w + col];
-            framebuffer[(y + row) * DISPLAY_WIDTH + (x + col)] = color;
+            *fb_pixel(x + col, y + row) = color;
         }
     }
     mark_dirty(x, y, w, h);
@@ -227,7 +227,7 @@ int display_draw_char(int16_t x, int16_t y, char c, uint16_t color, uint16_t bg_
             int16_t px = x + col;
             int16_t py = y + row;
             if (px >= 0 && px < DISPLAY_WIDTH && py >= 0 && py < DISPLAY_HEIGHT) {
-                framebuffer[py * DISPLAY_WIDTH + px] = (line & (1 << row)) ? color : bg_color;
+                *fb_pixel(px, py) = (line & (1 << row)) ? color : bg_color;
             }
         }
     }
