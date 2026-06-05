@@ -33,37 +33,10 @@ static esp_lcd_panel_handle_t panel_handle = NULL;
 // Framebuffer
 static uint16_t *framebuffer = NULL;
 
-// Dirty rectangle tracking for partial flush
-static int16_t dirty_x1, dirty_y1, dirty_x2, dirty_y2;
+// Debounce flag — skips flush when nothing changed
 static bool dirty = false;
 
-static void mark_dirty(int16_t x, int16_t y, int16_t w, int16_t h) {
-    int16_t x2 = x + w - 1;
-    int16_t y2 = y + h - 1;
-    if (!dirty) {
-        dirty_x1 = x;
-        dirty_y1 = y;
-        dirty_x2 = x2;
-        dirty_y2 = y2;
-        dirty = true;
-    } else {
-        if (x < dirty_x1) dirty_x1 = x;
-        if (y < dirty_y1) dirty_y1 = y;
-        if (x2 > dirty_x2) dirty_x2 = x2;
-        if (y2 > dirty_y2) dirty_y2 = y2;
-    }
-    // Clamp to display bounds
-    if (dirty_x1 < 0) dirty_x1 = 0;
-    if (dirty_y1 < 0) dirty_y1 = 0;
-    if (dirty_x2 >= DISPLAY_WIDTH) dirty_x2 = DISPLAY_WIDTH - 1;
-    if (dirty_y2 >= DISPLAY_HEIGHT) dirty_y2 = DISPLAY_HEIGHT - 1;
-}
-
-static void mark_all_dirty(void) {
-    dirty_x1 = 0;
-    dirty_y1 = 0;
-    dirty_x2 = DISPLAY_WIDTH - 1;
-    dirty_y2 = DISPLAY_HEIGHT - 1;
+static void mark_dirty(void) {
     dirty = true;
 }
 
@@ -170,13 +143,13 @@ void display_fill(uint16_t color) {
     for (size_t i = 0; i < count; i++) {
         framebuffer[i] = color;
     }
-    mark_all_dirty();
+    mark_dirty();
 }
 
 void display_draw_pixel(int16_t x, int16_t y, uint16_t color) {
     if (x < 0 || x >= DISPLAY_WIDTH || y < 0 || y >= DISPLAY_HEIGHT) return;
     *fb_pixel(x, y) = color;
-    mark_dirty(x, y, 1, 1);
+    mark_dirty();
 }
 
 void display_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
@@ -192,7 +165,7 @@ void display_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t colo
             *fb_pixel(col, row) = color;
         }
     }
-    mark_dirty(x, y, w, h);
+    mark_dirty();
 }
 
 void display_draw_sprite(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t *data) {
@@ -209,7 +182,7 @@ void display_draw_sprite(int16_t x, int16_t y, int16_t w, int16_t h, const uint1
             *fb_pixel(x + col, y + row) = color;
         }
     }
-    mark_dirty(x, y, w, h);
+    mark_dirty();
 }
 
 // --- Text Rendering ---
@@ -232,7 +205,7 @@ int display_draw_char(int16_t x, int16_t y, char c, uint16_t color, uint16_t bg_
         }
     }
 
-    mark_dirty(x, y, FONT_WIDTH, FONT_HEIGHT);
+    mark_dirty();
     return x + FONT_WIDTH;
 }
 
@@ -285,22 +258,9 @@ int display_draw_text(int16_t x, int16_t y, const char *text, uint16_t color, ui
 
 void display_flush(void) {
     if (!dirty) return;
-    mark_all_dirty();
 
-    int16_t x1 = dirty_x1;
-    int16_t y1 = dirty_y1;
-    int16_t w  = dirty_x2 - dirty_x1 + 1;
-    int16_t h  = dirty_y2 - dirty_y1 + 1;
-
-    // Align x to even for better performance
-    if (x1 & 1) {
-        x1--;
-        w++;
-    }
-
-    // Send dirty region to display
-    esp_lcd_panel_draw_bitmap(panel_handle, x1, y1, x1 + w, y1 + h,
-        (const void *)(framebuffer + y1 * DISPLAY_WIDTH + x1));
+    esp_lcd_panel_draw_bitmap(panel_handle, 0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT,
+                              (const void *)framebuffer);
 
     dirty = false;
 }
