@@ -49,6 +49,9 @@ static uint16_t          g_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t g_hid_start_handle = 0;
 static uint16_t g_hid_end_handle   = 0;
 
+/* Report Map handle — read to complete HID init */
+static uint16_t g_report_map_handle = 0;
+
 /* ── Forward declarations ──────────────────────────────────────────── */
 static int  gap_event_cb(struct ble_gap_event *event, void *arg);
 static void start_scan(void);
@@ -65,6 +68,9 @@ static int  desc_discovery_cb(uint16_t conn_handle,
 static int  write_cb(uint16_t conn_handle,
                      const struct ble_gatt_error *error,
                      struct ble_gatt_attr *attr, void *arg);
+static int  read_cb(uint16_t conn_handle,
+                    const struct ble_gatt_error *error,
+                    struct ble_gatt_attr *attr, void *arg);
 
 /* =====================================================================
  *    GAP Event Callback — all BLE events handled here
@@ -305,6 +311,12 @@ static int char_discovery_cb(uint16_t conn_handle,
              uuid_str, chr->val_handle, chr->properties);
 
     /* If this is the HID Report char with Notify support → discover CCCD */
+    /* Save Report Map handle for later read */
+    if (chr->uuid.u.type == BLE_UUID_TYPE_16 &&
+        chr->uuid.u16.value == HID_REPORT_MAP_UUID) {
+        g_report_map_handle = chr->val_handle;
+    }
+
     if (chr->uuid.u.type == BLE_UUID_TYPE_16 &&
         chr->uuid.u16.value == HID_REPORT_UUID &&
         (chr->properties & BLE_GATT_CHR_PROP_NOTIFY)) {
@@ -371,9 +383,36 @@ static int write_cb(uint16_t conn_handle,
     if (error->status == 0) {
         ESP_LOGI(TAG, "✅ Subscribed to HID Report!");
         g_connected = true;
+
+        /* Read Report Map to complete HID init (Xbox requires this) */
+        if (g_report_map_handle != 0) {
+            ESP_LOGI(TAG, "Reading Report Map (handle=%d)...", g_report_map_handle);
+            int rc = ble_gattc_read(g_conn_handle, g_report_map_handle,
+                                    read_cb, NULL);
+            if (rc != 0) {
+                ESP_LOGE(TAG, "❌ Report Map read failed: %d", rc);
+            }
+        }
     } else {
         ESP_LOGE(TAG, "❌ Subscribe failed: %d", error->status);
         ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+    }
+    return 0;
+}
+
+/* =====================================================================
+ *    Read Callback (Report Map read to complete HID init)
+ * ===================================================================== */
+static int read_cb(uint16_t conn_handle,
+                   const struct ble_gatt_error *error,
+                   struct ble_gatt_attr *attr,
+                   void *arg) {
+    (void)conn_handle;
+    (void)arg;
+    if (error->status == 0 && attr) {
+        ESP_LOGI(TAG, "✅ Report Map read OK (%d bytes)", OS_MBUF_PKTLEN(attr->om));
+    } else {
+        ESP_LOGW(TAG, "Report Map read: status=%d (controller may still work)", error->status);
     }
     return 0;
 }
