@@ -125,6 +125,9 @@ static void display_task(void *param) {
     while (1) {
         bool redraw = false;
 
+        // Poll controller state once per frame
+        controller_poll();
+
         if (button_action_pressed() || controller_button_pressed(CTRL_A)) {
             current_face = (current_face + 1) % FACE_COUNT;
             redraw = true;
@@ -169,6 +172,11 @@ void app_main(void) {
     // Create display/pet task before BTstack blocks the main task
     xTaskCreate(display_task, "display", 8192, NULL, 5, NULL);
 
-    // Init BTstack + Xbox BLE HID host (blocks forever)
+    // Init NimBLE + Xbox BLE HID host (non-blocking, runs in NimBLE task)
     xbox_ble_init(1);
+
+    // Keep main task alive — NimBLE callbacks run in NimBLE host task
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }

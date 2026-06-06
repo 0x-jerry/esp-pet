@@ -20,6 +20,7 @@
 #define ENABLE_PRINTF_HEXDUMP
 #define ENABLE_LOG_ERROR
 #define ENABLE_LOG_INFO
+#define ENABLE_LOG_DEBUG
 
 // LE-only (ESP32-C6)
 #define ENABLE_BLE

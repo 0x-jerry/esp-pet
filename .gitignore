@@ -6,7 +6,6 @@ sdkconfig
 sdkconfig.old
 
 # Dependency lock files (generated)
-dependencies.lock
 managed_components/
 
 # Python

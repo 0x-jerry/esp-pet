@@ -3,6 +3,7 @@
 #include <string.h>
 
 static uint16_t g_prev_buttons = 0;
+static uint16_t g_curr_buttons = 0;
 
 static uint16_t btn_bit(ctrl_button_t btn) {
     return (uint16_t)(1 << (int)btn);
@@ -27,6 +28,13 @@ static uint16_t build_mask(const xbox_gamepad_t *gp) {
 
 void controller_init(void) {
     g_prev_buttons = 0;
+    g_curr_buttons = 0;
+}
+
+void controller_poll(void) {
+    xbox_gamepad_t gp = xbox_ble_get_gamepad();
+    g_prev_buttons = g_curr_buttons;
+    g_curr_buttons = build_mask(&gp);
 }
 
 bool controller_is_connected(void) {
@@ -34,10 +42,6 @@ bool controller_is_connected(void) {
 }
 
 bool controller_button_pressed(ctrl_button_t btn) {
-    xbox_gamepad_t gp = xbox_ble_get_gamepad();
-    uint16_t current = build_mask(&gp);
     uint16_t bit = btn_bit(btn);
-    bool pressed = ((current & bit) && !(g_prev_buttons & bit));
-    g_prev_buttons = current;
-    return pressed;
+    return (g_curr_buttons & bit) && !(g_prev_buttons & bit);
 }

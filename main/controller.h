@@ -20,5 +20,6 @@ typedef enum {
 } ctrl_button_t;
 
 void controller_init(void);
+void controller_poll(void);
 bool controller_is_connected(void);
 bool controller_button_pressed(ctrl_button_t btn);

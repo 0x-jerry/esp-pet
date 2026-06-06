@@ -3,6 +3,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Button bitmask definitions (matching Xbox v5 BLE report)
 #define XB_BTN_A         (1 << 0)
 #define XB_BTN_B         (1 << 1)
@@ -35,3 +39,7 @@ typedef struct {
 void xbox_ble_init(int max_devices);
 xbox_gamepad_t xbox_ble_get_gamepad(void);
 bool xbox_ble_is_connected(void);
+
+#ifdef __cplusplus
+}
+#endif
