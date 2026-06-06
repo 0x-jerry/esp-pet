@@ -37,7 +37,7 @@
 #define CONNECT_TIMEOUT_MS 8000
 
 /* ── Xbox input report minimum length ───────────────────────────────── */
-#define XBOX_REPORT_MIN_LEN 17
+#define XBOX_REPORT_MIN_LEN 16
 
 /* ── Globals ───────────────────────────────────────────────────────── */
 static SemaphoreHandle_t g_mutex       = NULL;
@@ -51,6 +51,9 @@ static uint16_t g_hid_end_handle   = 0;
 
 /* Report Map handle — read to complete HID init */
 static uint16_t g_report_map_handle = 0;
+
+/* HID Information handle */
+static uint16_t g_hid_info_handle = 0;
 
 /* ── Forward declarations ──────────────────────────────────────────── */
 static int  gap_event_cb(struct ble_gap_event *event, void *arg);
@@ -159,6 +162,8 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg) {
         g_conn_handle = BLE_HS_CONN_HANDLE_NONE;
         g_hid_start_handle = 0;
         g_hid_end_handle   = 0;
+        g_report_map_handle = 0;
+        g_hid_info_handle = 0;
 
         /* Reconnect */
         vTaskDelay(pdMS_TO_TICKS(RECONNECT_DELAY_MS));
@@ -190,13 +195,19 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg) {
     case BLE_GAP_EVENT_NOTIFY_RX: {
         struct os_mbuf *om = event->notify_rx.om;
         uint16_t len = OS_MBUF_PKTLEN(om);
+        uint16_t attr_handle = event->notify_rx.attr_handle;
+
+        /* Debug: log all notify events */
+        ESP_LOGI(TAG, "NOTIFY_RX: attr=%d len=%d", attr_handle, len);
+        ESP_LOG_BUFFER_HEX_LEVEL(TAG, event->notify_rx.om->om_data,
+                                 len < 32 ? len : 32, ESP_LOG_INFO);
 
         if (len >= XBOX_REPORT_MIN_LEN) {
             uint8_t data[XBOX_REPORT_MIN_LEN];
             os_mbuf_copydata(om, 0, len, data);
 
-            if (data[0] == 0x01) {
-                /* Main input report */
+            if (data[0] == 0x01 && len >= 17) {
+                /* Main input report (legacy, 17-byte) */
                 xbox_gamepad_t gp = {0};
 
                 gp.axis_x   = (int32_t)(data[1]  | (data[2]  << 8));
@@ -207,6 +218,24 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg) {
                 gp.throttle = (int32_t)((data[11] | (data[12] << 8)) & 0x03FF);
                 gp.dpad     = data[13] & 0x0F;
                 gp.buttons  = (uint16_t)(data[14] | (data[15] << 8));
+
+                if (g_mutex) {
+                    xSemaphoreTake(g_mutex, portMAX_DELAY);
+                    g_gamepad = gp;
+                    xSemaphoreGive(g_mutex);
+                }
+            } else if (data[0] == 0x19) {
+                /* Input report (16-byte, 0x19 report ID) */
+                xbox_gamepad_t gp = {0};
+
+                gp.axis_x   = (int32_t)(data[1]  | (data[2]  << 8));
+                gp.axis_y   = (int32_t)(data[3]  | (data[4]  << 8));
+                gp.axis_rx  = (int32_t)(data[5]  | (data[6]  << 8));
+                gp.axis_ry  = (int32_t)(data[7]  | (data[8]  << 8));
+                gp.brake    = (int32_t)((data[9]  | (data[10] << 8)) & 0x03FF);
+                gp.throttle = (int32_t)((data[11] | (data[12] << 8)) & 0x03FF);
+                gp.buttons  = (uint16_t)(data[13] | (data[14] << 8));
+                gp.dpad     = 0;
 
                 if (g_mutex) {
                     xSemaphoreTake(g_mutex, portMAX_DELAY);
@@ -317,6 +346,12 @@ static int char_discovery_cb(uint16_t conn_handle,
         g_report_map_handle = chr->val_handle;
     }
 
+    /* Save HID Information handle */
+    if (chr->uuid.u.type == BLE_UUID_TYPE_16 &&
+        chr->uuid.u16.value == HID_INFO_UUID) {
+        g_hid_info_handle = chr->val_handle;
+    }
+
     if (chr->uuid.u.type == BLE_UUID_TYPE_16 &&
         chr->uuid.u16.value == HID_REPORT_UUID &&
         (chr->properties & BLE_GATT_CHR_PROP_NOTIFY)) {
@@ -410,9 +445,20 @@ static int read_cb(uint16_t conn_handle,
     (void)conn_handle;
     (void)arg;
     if (error->status == 0 && attr) {
-        ESP_LOGI(TAG, "✅ Report Map read OK (%d bytes)", OS_MBUF_PKTLEN(attr->om));
+        uint16_t len = OS_MBUF_PKTLEN(attr->om);
+        ESP_LOGI(TAG, "✅ Read OK (handle=%d, %d bytes)", attr->handle, len);
+
+        /* After Report Map, also read HID Information to complete init */
+        if (attr->handle == g_report_map_handle && g_hid_info_handle != 0) {
+            ESP_LOGI(TAG, "Reading HID Information (handle=%d)...", g_hid_info_handle);
+            int rc = ble_gattc_read(g_conn_handle, g_hid_info_handle,
+                                    read_cb, NULL);
+            if (rc != 0) {
+                ESP_LOGE(TAG, "❌ HID Info read failed: %d", rc);
+            }
+        }
     } else {
-        ESP_LOGW(TAG, "Report Map read: status=%d (controller may still work)", error->status);
+        ESP_LOGW(TAG, "Read failed: status=%d", error->status);
     }
     return 0;
 }
