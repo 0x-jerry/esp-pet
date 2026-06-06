@@ -4,8 +4,14 @@
 #include "xbox_ble.h"
 #include "esp_log.h"
 #include "esp_random.h"
+#include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+
+/* ── NimBLE native headers ────────────────────────────────────── */
+#include "nimble/nimble_port.h"
+#include "nimble/nimble_port_freertos.h"
+#include "host/ble_hs.h"
 
 static const char *TAG = "main";
 
@@ -162,21 +168,50 @@ static void display_task(void *param) {
     }
 }
 
+static void nimble_host_task(void *param) {
+    nimble_port_run();   // 永不返回
+}
+
+static void on_sync(void) {
+    ESP_LOGI(TAG, "NimBLE Host synced, starting Xbox BLE scan...");
+    xbox_ble_init(1);
+}
+
+static void on_reset(int reason) {
+    ESP_LOGE(TAG, "NimBLE Host reset (reason=%d)", reason);
+}
+
 void app_main(void) {
     ESP_LOGI(TAG, "=== ESP-PET ===");
 
+    /* ── 1. NVS init (stores bonding keys) ─────────────────── */
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        nvs_flash_erase();
+        nvs_flash_init();
+    }
+
+    /* ── 2. NimBLE Host config ─────────────────────────────── */
+    nimble_port_init();
+
+    ble_hs_cfg.sync_cb  = on_sync;
+    ble_hs_cfg.reset_cb = on_reset;
+
+    /* Security: Bonding + SC + Just Works */
+    ble_hs_cfg.sm_bonding   = 1;
+    ble_hs_cfg.sm_sc        = 1;
+    ble_hs_cfg.sm_mitm      = 0;
+    ble_hs_cfg.sm_io_cap    = BLE_HS_IO_NO_INPUT_OUTPUT;
+    ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
+
+    /* ── 3. Peripherals ────────────────────────────────────── */
     display_init();
     buttons_init();
     controller_init();
 
-    // Create display/pet task before BTstack blocks the main task
+    /* ── 4. Display task ───────────────────────────────────── */
     xTaskCreate(display_task, "display", 8192, NULL, 5, NULL);
 
-    // Init NimBLE + Xbox BLE HID host (non-blocking, runs in NimBLE task)
-    xbox_ble_init(1);
-
-    // Keep main task alive — NimBLE callbacks run in NimBLE host task
-    while (1) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+    /* ── 5. Start NimBLE Host task (does not return) ───────── */
+    nimble_port_freertos_init(nimble_host_task);
 }
