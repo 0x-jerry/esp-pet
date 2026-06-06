@@ -37,4 +37,6 @@ void controller_init(void);
 void controller_poll(void);
 bool controller_is_connected(void);
 bool controller_button_pressed(ctrl_button_t btn);
+bool controller_button_is_pressed(ctrl_button_t btn);
 void controller_set_button(gamepad_state_t *gp, ctrl_button_t btn, bool pressed);
+gamepad_state_t controller_get_state(void);

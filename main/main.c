@@ -112,6 +112,66 @@ static void draw_smiley(face_expression_t expr) {
     }
 }
 
+/* ── Gamepad debug overlay ────────────────────────────────────── */
+#define DEBUG_X     10
+#define DEBUG_Y     85
+#define DEBUG_W     220
+#define DEBUG_H     110
+
+static const char *btn_names[] = {
+    [CTRL_A] = "A", [CTRL_B] = "B", [CTRL_X] = "X", [CTRL_Y] = "Y",
+    [CTRL_LB] = "LB", [CTRL_RB] = "RB",
+    [CTRL_DPAD_UP] = "DU", [CTRL_DPAD_DOWN] = "DD",
+    [CTRL_DPAD_LEFT] = "DL", [CTRL_DPAD_RIGHT] = "DR",
+    [CTRL_START] = "St", [CTRL_SELECT] = "Se",
+};
+
+static void draw_debug_gamepad(const gamepad_state_t *gs) {
+    char buf[64];
+
+    /* clear debug area */
+    display_fill_rect(DEBUG_X, DEBUG_Y, DEBUG_W, DEBUG_H, COLOR_BLACK);
+
+    /* title */
+    display_draw_text(DEBUG_X, DEBUG_Y, "--- Gamepad ---", COLOR_CYAN, COLOR_BLACK, 0);
+
+    /* left stick */
+    snprintf(buf, sizeof(buf), "L: X:%+4d Y:%+4d", (int)gs->axis_x, (int)gs->axis_y);
+    display_draw_text(DEBUG_X, DEBUG_Y + 12, buf, COLOR_WHITE, COLOR_BLACK, 0);
+
+    /* right stick */
+    snprintf(buf, sizeof(buf), "R: X:%+4d Y:%+4d", (int)gs->axis_rx, (int)gs->axis_ry);
+    display_draw_text(DEBUG_X, DEBUG_Y + 24, buf, COLOR_WHITE, COLOR_BLACK, 0);
+
+    /* triggers */
+    snprintf(buf, sizeof(buf), "LT:%3d  RT:%3d", (int)gs->brake, (int)gs->throttle);
+    display_draw_text(DEBUG_X, DEBUG_Y + 36, buf, COLOR_WHITE, COLOR_BLACK, 0);
+
+    /* buttons - row 1: A B X Y LB RB */
+    static const ctrl_button_t row1[] = {CTRL_A, CTRL_B, CTRL_X, CTRL_Y, CTRL_LB, CTRL_RB};
+    int bx = DEBUG_X;
+    for (int i = 0; i < 6; i++) {
+        ctrl_button_t b = row1[i];
+        bx = DEBUG_X + i * 36;
+        bool on = controller_button_is_pressed(b);
+        snprintf(buf, sizeof(buf), "[%c]%-2s", on ? '*' : ' ', btn_names[b]);
+        bx = display_draw_text(bx, DEBUG_Y + 52, buf,
+                               on ? COLOR_YELLOW : COLOR_GRAY, COLOR_BLACK, 0);
+    }
+
+    /* buttons - row 2: DU DD DL DR St Se */
+    static const ctrl_button_t row2[] = {CTRL_DPAD_UP, CTRL_DPAD_DOWN, CTRL_DPAD_LEFT,
+                                         CTRL_DPAD_RIGHT, CTRL_START, CTRL_SELECT};
+    for (int i = 0; i < 6; i++) {
+        ctrl_button_t b = row2[i];
+        bx = DEBUG_X + i * 36;
+        bool on = controller_button_is_pressed(b);
+        snprintf(buf, sizeof(buf), "[%c]%-2s", on ? '*' : ' ', btn_names[b]);
+        bx = display_draw_text(bx, DEBUG_Y + 68, buf,
+                               on ? COLOR_YELLOW : COLOR_GRAY, COLOR_BLACK, 0);
+    }
+}
+
 static void display_task(void *param) {
     display_fill(COLOR_BLACK);
     display_draw_text(10, 10, "ESP-PET", COLOR_WHITE, COLOR_BLACK, 0);
@@ -129,28 +189,29 @@ static void display_task(void *param) {
     display_flush();
 
     while (1) {
-        bool redraw = false;
 
         // Poll controller state once per frame
         controller_poll();
 
         if (button_action_pressed() || controller_button_pressed(CTRL_A)) {
             current_face = (current_face + 1) % FACE_COUNT;
-            redraw = true;
             ESP_LOGI(TAG, "Next -> %s", face_labels[current_face]);
         }
+
         if (button_talk_pressed() || controller_button_pressed(CTRL_B)) {
             current_face = (face_expression_t)(esp_random() % FACE_COUNT);
-            redraw = true;
             ESP_LOGI(TAG, "Random -> %s", face_labels[current_face]);
         }
 
-        if (redraw) {
-            draw_smiley(current_face);
-            display_fill_rect(90, 58, 140, 25, COLOR_DARK_GRAY);
-            display_draw_text(98, 66, face_labels[current_face],
-                              COLOR_YELLOW, COLOR_DARK_GRAY, 0);
-            display_flush();
+        draw_smiley(current_face);
+        display_fill_rect(90, 58, 140, 25, COLOR_DARK_GRAY);
+        display_draw_text(98, 66, face_labels[current_face],
+                        COLOR_YELLOW, COLOR_DARK_GRAY, 0);
+
+        /* ── Debug: always show gamepad state ─────────────────── */
+        if (controller_is_connected()) {
+            gamepad_state_t gs = controller_get_state();
+            draw_debug_gamepad(&gs);
         }
 
         static bool last_ctrl = false;
@@ -161,9 +222,9 @@ static void display_task(void *param) {
             display_draw_text(10, 200,
                 ctrl_conn ? "Ctrl: connected" : "Ctrl: searching...",
                 ctrl_conn ? COLOR_GREEN : COLOR_GRAY, COLOR_BLACK, 0);
-            display_flush();
         }
 
+        display_flush();
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
