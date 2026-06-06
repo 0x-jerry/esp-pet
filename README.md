@@ -20,7 +20,7 @@ A Tamagotchi-style AI virtual pet for the ESP32-C6, featuring an ST7789 240×240
 | CS     | 2    |
 | DC     | 1    |
 | RST    | 0    |
-| BL     | 3    |
+| BL     | 4    |
 | BTN_L  | 14   |
 | BTN_R  | 15   |
 

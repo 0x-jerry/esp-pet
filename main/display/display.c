@@ -7,8 +7,11 @@
 #include "esp_lcd_types.h"
 #include "driver/spi_master.h"
 #include "driver/ledc.h"
+#include "driver/gpio.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <string.h>
 
 static const char *TAG = "display";
@@ -28,7 +31,6 @@ static const char *TAG = "display";
 
 // Panel handles
 static esp_lcd_panel_io_handle_t io_handle = NULL;
-static esp_lcd_panel_handle_t panel_handle = NULL;
 
 // Framebuffer
 static uint16_t *framebuffer = NULL;
@@ -98,20 +100,35 @@ void display_init(void) {
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LCD_HOST, &io_cfg, &io_handle));
 
-    // 4. Create ST7789 panel
-    esp_lcd_panel_dev_config_t panel_cfg = {
-        .reset_gpio_num = TFT_RST,
-        .rgb_ele_order  = LCD_RGB_ELEMENT_ORDER_RGB,
-        .bits_per_pixel = 16,
-    };
-    ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(io_handle, &panel_cfg, &panel_handle));
+    // 4. Manual reset
+    gpio_set_direction(TFT_RST, GPIO_MODE_OUTPUT);
+    gpio_set_level(TFT_RST, 0);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    gpio_set_level(TFT_RST, 1);
+    vTaskDelay(pdMS_TO_TICKS(120));
 
-    // 5. Initialize panel (orientation handled in software)
-    esp_lcd_panel_reset(panel_handle);
-    esp_lcd_panel_init(panel_handle);
+    // ── ST7789 standard init sequence ──
+    // Sleep out
+    esp_lcd_panel_io_tx_param(io_handle, 0x11, NULL, 0);
+    vTaskDelay(pdMS_TO_TICKS(120));
 
-    // 6. Turn on display
-    esp_lcd_panel_disp_on_off(panel_handle, true);
+    // COLMOD: try 0x55 (RGB 16-bit) — some SPI panels need this
+    uint8_t colmod = 0x55;
+    esp_lcd_panel_io_tx_param(io_handle, 0x3A, &colmod, 1);
+
+    // MADCTL: BGR order (bit3=1), row/col exchange off
+    uint8_t madctl = 0x08;
+    esp_lcd_panel_io_tx_param(io_handle, 0x36, &madctl, 1);
+
+    // Inversion on (typical for ST7789)
+    esp_lcd_panel_io_tx_param(io_handle, 0x21, NULL, 0);
+
+    // Normal display mode on
+    esp_lcd_panel_io_tx_param(io_handle, 0x13, NULL, 0);
+
+    // Display on
+    esp_lcd_panel_io_tx_param(io_handle, 0x29, NULL, 0);
+    vTaskDelay(pdMS_TO_TICKS(20));
 
     // 7. Allocate framebuffer
     size_t fb_size = DISPLAY_WIDTH * DISPLAY_HEIGHT * sizeof(uint16_t);
@@ -272,13 +289,85 @@ int display_draw_text(int16_t x, int16_t y, const char *text, uint16_t color, ui
     return cur_y + FONT_HEIGHT;
 }
 
+// --- Horizontal Rainbow (full hue sweep) ---
+
+/* Convert HSV (hue 0-360, sat 0-255, val 0-255) → RGB565 */
+static uint16_t hue_to_rgb565(int hue) {
+    int h = hue % 360;
+    int sector = h / 60;
+    int fract  = h - sector * 60;          // 0…59
+    int p = 0;
+    int q = (255 * (60 - fract) + 30) / 60;
+    int t = (255 * fract + 30) / 60;
+    int r, g, b;
+
+    switch (sector) {
+        case 0: r = 255; g = t;   b = p;   break;
+        case 1: r = q;   g = 255; b = p;   break;
+        case 2: r = p;   g = 255; b = t;   break;
+        case 3: r = p;   g = q;   b = 255; break;
+        case 4: r = t;   g = p;   b = 255; break;
+        default: r = 255; g = p;   b = q;   break;
+    }
+
+    return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+}
+
+void display_draw_rainbow_h(int16_t x, int16_t y, int16_t w, int16_t h) {
+    // Clip
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > DISPLAY_WIDTH)  w = DISPLAY_WIDTH - x;
+    if (y + h > DISPLAY_HEIGHT) h = DISPLAY_HEIGHT - y;
+    if (w <= 0 || h <= 0) return;
+
+    int16_t denom = (w > 1) ? (w - 1) : 1;
+    for (int16_t col = 0; col < w; col++) {
+        int hue = (360 * col) / denom;          // 0 → 360 across width
+        uint16_t color = hue_to_rgb565(hue);
+        uint16_t *p = fb_pixel(x + col, y);
+        for (int16_t row = 0; row < h; row++) {
+            *p = color;
+            p -= DISPLAY_WIDTH;
+        }
+    }
+    mark_dirty();
+}
+
 // --- Flush to Display ---
 
 void display_flush(void) {
     if (!dirty) return;
 
-    esp_lcd_panel_draw_bitmap(panel_handle, 0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT,
-                              (const void *)framebuffer);
+    // Lazy-allocated swap buffer for DMA-safe output
+    static uint16_t *swap_buf = NULL;
+    static size_t swap_buf_size = 0;
+    size_t fb_size = DISPLAY_WIDTH * DISPLAY_HEIGHT * sizeof(uint16_t);
+    if (swap_buf_size < fb_size) {
+        if (swap_buf) free(swap_buf);
+        swap_buf = heap_caps_malloc(fb_size, MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+        assert(swap_buf);
+        swap_buf_size = fb_size;
+    }
+
+    // Set column address (CASET): 0 … DISPLAY_WIDTH-1
+    uint8_t caset[] = {0, 0, 0, (uint8_t)(DISPLAY_WIDTH - 1)};
+    esp_lcd_panel_io_tx_param(io_handle, 0x2A, caset, 4);
+
+    // Set row address (RASET): 0 … DISPLAY_HEIGHT-1
+    uint8_t raset[] = {0, 0, 0, (uint8_t)(DISPLAY_HEIGHT - 1)};
+    esp_lcd_panel_io_tx_param(io_handle, 0x2B, raset, 4);
+
+    // Swap G↔B into DMA-safe output buffer
+    size_t count = DISPLAY_WIDTH * DISPLAY_HEIGHT;
+    uint16_t *fb = (uint16_t *)framebuffer;
+    for (size_t i = 0; i < count; i++) {
+        uint16_t c = fb[i];
+        swap_buf[i] = (c & 0xF800) | ((c & 0x001F) << 6) | ((c >> 5) & 0x001F);
+    }
+
+    // Send from stable swap buffer (DMA won't race with framebuffer writes)
+    esp_lcd_panel_io_tx_color(io_handle, 0x2C, (const void *)swap_buf, fb_size);
 
     dirty = false;
 }

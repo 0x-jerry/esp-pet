@@ -11,7 +11,7 @@
 #define TFT_CS   2
 #define TFT_DC   1
 #define TFT_RST  0
-#define TFT_BL   3
+#define TFT_BL   4
 #define TFT_MOSI 7
 #define TFT_SCLK 6
 
@@ -85,3 +85,9 @@ void display_set_backlight(uint8_t percent);
  * Size is DISPLAY_WIDTH * DISPLAY_HEIGHT pixels (RGB565 = 2 bytes each).
  */
 uint16_t *display_get_framebuffer(void);
+
+/**
+ * Draw a horizontal rainbow (full hue sweep) bar.
+ * Cycles through all hues left-to-right to test colour reproduction.
+ */
+void display_draw_rainbow_h(int16_t x, int16_t y, int16_t w, int16_t h);
