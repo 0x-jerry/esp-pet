@@ -1,8 +1,6 @@
 #include "graphics.h"
 #include "font.h"
 
-#include <string.h>
-
 // ── Internal helpers ──────────────────────────────────────────
 
 static inline uint16_t *fb_pixel(int16_t x, int16_t y) {

@@ -1,7 +1,5 @@
 #include "controller.h"
-#include "xbox_hid.h"
 #include "xbox_ble.h"
-#include <string.h>
 
 static gamepad_state_t g_state = {0};
 static uint16_t g_prev_buttons = 0;

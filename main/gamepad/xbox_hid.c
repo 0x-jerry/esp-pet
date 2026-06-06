@@ -6,7 +6,6 @@
  */
 #include "xbox_hid.h"
 #include "esp_log.h"
-#include <string.h>
 
 #define TAG "xbox_hid"
 

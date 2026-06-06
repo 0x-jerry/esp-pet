@@ -38,8 +38,6 @@ static const char *face_labels[] = {
 #define LAYOUT_HINT2_Y       40
 #define LAYOUT_EXPR_Y        50
 #define LAYOUT_EXPR_H        18
-#define LAYOUT_FACE_Y        72
-#define LAYOUT_FACE_H        96
 #define LAYOUT_DEBUG_Y       160
 #define LAYOUT_DEBUG_H       50
 #define LAYOUT_STATUS_Y      214
@@ -317,17 +315,17 @@ void app_main(void) {
     ESP_LOGI(TAG, "Color test: Red");
     graphics_fill(COLOR_RED);
     display_flush();
-    vTaskDelay(pdMS_TO_TICKS(2000));
+    vTaskDelay(pdMS_TO_TICKS(500));
 
     ESP_LOGI(TAG, "Color test: Green");
     graphics_fill(COLOR_GREEN);
     display_flush();
-    vTaskDelay(pdMS_TO_TICKS(2000));
+    vTaskDelay(pdMS_TO_TICKS(500));
 
     ESP_LOGI(TAG, "Color test: Blue");
     graphics_fill(COLOR_BLUE);
     display_flush();
-    vTaskDelay(pdMS_TO_TICKS(2000));
+    vTaskDelay(pdMS_TO_TICKS(500));
 
     buttons_init();
     controller_init();
