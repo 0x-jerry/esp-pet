@@ -13,7 +13,6 @@ typedef struct {
     int32_t  brake;       /* LT */
     int32_t  throttle;    /* RT */
     uint16_t buttons;     /* Button bitmask */
-    uint8_t  dpad;        /* D-pad state */
 } gamepad_state_t;
 
 /* ── Generic button mapping ────────────────────────────────────────── */

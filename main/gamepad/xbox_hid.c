@@ -21,6 +21,19 @@ static gamepad_state_t parse_hid(const uint8_t *data) {
     controller_set_button(&gp, CTRL_LB, data[13] & (1 << 6));
     controller_set_button(&gp, CTRL_RB, data[13] & (1 << 7));
 
+    controller_set_button(&gp, CTRL_DPAD_UP, data[12] == 0x01);
+    controller_set_button(&gp, CTRL_DPAD_DOWN, data[12] == 0x05);
+    controller_set_button(&gp, CTRL_DPAD_LEFT, data[12] == 0x07);
+    controller_set_button(&gp, CTRL_DPAD_RIGHT, data[12] == 0x03);
+
+    gp.axis_x   = (int16_t)(data[1] - 0x80);
+    gp.axis_y   = (int16_t)(data[3] - 0x80);
+    gp.axis_rx  = (int16_t)(data[5] - 0x80);
+    gp.axis_ry  = (int16_t)(data[7] - 0x80);
+
+    gp.brake    = (int16_t)data[8];
+    gp.throttle = (int16_t)data[10];
+
     return gp;
 }
 
