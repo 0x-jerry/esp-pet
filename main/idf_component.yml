@@ -1,4 +1,0 @@
-## ESP-PET main component
-## Dependencies are linked via ESP-IDF built-in components (NimBLE host, drivers, etc.)
-dependencies: {}
-
