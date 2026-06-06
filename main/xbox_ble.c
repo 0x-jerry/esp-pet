@@ -236,13 +236,16 @@ static int service_discovery_cb(uint16_t conn_handle,
     (void)conn_handle;
     (void)arg;
 
-    if (error->status != 0) {
+
+    if (error->status != 0 && error->status != BLE_HS_EDONE) {
         ESP_LOGE(TAG, "❌ Service discovery error: %d", error->status);
         return 0;
     }
 
     /* svc == NULL means discovery complete */
     if (svc == NULL) {
+        ESP_LOGI(TAG, "✅ Service discovery complete");
+
         if (g_hid_start_handle == 0) {
             ESP_LOGE(TAG, "❌ HID service not found!");
             ble_gap_terminate(g_conn_handle, BLE_ERR_REM_USER_CONN_TERM);
@@ -257,6 +260,7 @@ static int service_discovery_cb(uint16_t conn_handle,
                                 char_discovery_cb, NULL);
         return 0;
     }
+
 
     /* Print each discovered service */
     char uuid_str[BLE_UUID_STR_LEN];
@@ -284,7 +288,7 @@ static int char_discovery_cb(uint16_t conn_handle,
     (void)conn_handle;
     (void)arg;
 
-    if (error->status != 0) {
+    if (error->status != 0 && error->status != BLE_HS_EDONE) {
         ESP_LOGE(TAG, "❌ Char discovery error: %d", error->status);
         return 0;
     }
@@ -326,7 +330,7 @@ static int desc_discovery_cb(uint16_t conn_handle,
     (void)chr_val_handle;
     (void)arg;
 
-    if (error->status != 0) {
+    if (error->status != 0 && error->status != BLE_HS_EDONE) {
         ESP_LOGE(TAG, "❌ Descriptor discovery error: %d", error->status);
         return 0;
     }
