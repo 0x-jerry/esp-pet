@@ -1,7 +1,7 @@
 #include "buttons.h"
 #include "controller.h"
 #include "display.h"
-#include "xbox_ble.h"
+#include "xbox/xbox_ble.h"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "nvs_flash.h"

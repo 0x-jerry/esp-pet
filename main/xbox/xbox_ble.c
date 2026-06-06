@@ -3,7 +3,7 @@
  *
  * Flow: on_sync → start_scan → DISC event → connect → ENC_CHANGE →
  *        discover HID service → discover characteristics →
- *        discover CCCD → subscribe → NOTIFY_RX (gamepad data)
+ *        discover CCCD → subscribe → NOTIFY_RX → xbox_hid_parse()
  */
 #include "xbox_ble.h"
 
@@ -24,20 +24,15 @@
 
 /* ── BLE UUIDs (16-bit) ────────────────────────────────────────────── */
 #define HID_SVC_UUID        0x1812
-#define BATTERY_SVC_UUID    0x180F
 #define HID_REPORT_UUID     0x2A4D
 #define HID_REPORT_MAP_UUID 0x2A4B
 #define HID_INFO_UUID       0x2A4A
 #define CCCD_UUID           0x2902
-#define BATTERY_LEVEL_UUID  0x2A19
 
 /* ── Timing ────────────────────────────────────────────────────────── */
 #define SCAN_DURATION_MS   5000
 #define RECONNECT_DELAY_MS 500
 #define CONNECT_TIMEOUT_MS 8000
-
-/* ── Xbox input report minimum length ───────────────────────────────── */
-#define XBOX_REPORT_MIN_LEN 16
 
 /* ── Globals ───────────────────────────────────────────────────────── */
 static SemaphoreHandle_t g_mutex       = NULL;
@@ -49,11 +44,9 @@ static uint16_t          g_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t g_hid_start_handle = 0;
 static uint16_t g_hid_end_handle   = 0;
 
-/* Report Map handle — read to complete HID init */
+/* Report Map / HID Information handles */
 static uint16_t g_report_map_handle = 0;
-
-/* HID Information handle */
-static uint16_t g_hid_info_handle = 0;
+static uint16_t g_hid_info_handle   = 0;
 
 /* ── Forward declarations ──────────────────────────────────────────── */
 static int  gap_event_cb(struct ble_gap_event *event, void *arg);
@@ -92,13 +85,11 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg) {
                                          event->disc.length_data);
         if (rc != 0) return 0;
 
-        /* Read device name from advertisement */
         char name[32] = {0};
         if (fields.name_len > 0 && fields.name_len < sizeof(name)) {
             memcpy(name, fields.name, fields.name_len);
         }
 
-        /* Only process Xbox controllers */
         if (strstr(name, "Xbox") == NULL && strstr(name, "xbox") == NULL) {
             return 0;
         }
@@ -112,9 +103,8 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg) {
         ESP_LOGI(TAG, "🎮 Found Xbox: %s [%s] RSSI=%d",
                  name, addr_str, event->disc.rssi);
 
-        /* Stop scan, then connect */
         ble_gap_disc_cancel();
-        g_connected = false; /* allow new connection attempt */
+        g_connected = false;
 
         int rc2 = ble_gap_connect(BLE_OWN_ADDR_PUBLIC,
                                   &event->disc.addr,
@@ -144,7 +134,6 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg) {
         g_conn_handle = event->connect.conn_handle;
         ESP_LOGI(TAG, "✅ Connected (handle=%d)", g_conn_handle);
 
-        /* Initiate pairing / encryption immediately */
         int rc = ble_gap_security_initiate(g_conn_handle);
         if (rc != 0) {
             ESP_LOGE(TAG, "❌ Security initiate failed: %d", rc);
@@ -158,14 +147,13 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg) {
     case BLE_GAP_EVENT_DISCONNECT: {
         ESP_LOGI(TAG, "Disconnected (reason=%d)",
                  event->disconnect.reason);
-        g_connected   = false;
-        g_conn_handle = BLE_HS_CONN_HANDLE_NONE;
-        g_hid_start_handle = 0;
-        g_hid_end_handle   = 0;
+        g_connected         = false;
+        g_conn_handle       = BLE_HS_CONN_HANDLE_NONE;
+        g_hid_start_handle  = 0;
+        g_hid_end_handle    = 0;
         g_report_map_handle = 0;
-        g_hid_info_handle = 0;
+        g_hid_info_handle   = 0;
 
-        /* Reconnect */
         vTaskDelay(pdMS_TO_TICKS(RECONNECT_DELAY_MS));
         start_scan();
         return 0;
@@ -182,7 +170,6 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg) {
 
         ESP_LOGI(TAG, "🔐 Link encrypted! Discovering services...");
 
-        /* Discover all services */
         int rc = ble_gattc_disc_all_svcs(g_conn_handle,
                                          service_discovery_cb, NULL);
         if (rc != 0) {
@@ -191,60 +178,32 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg) {
         return 0;
     }
 
-    /* ── Notify / Indicate data received (gamepad input reports) ── */
+    /* ── Notify data received → delegate to xbox_hid_parse() ─────── */
     case BLE_GAP_EVENT_NOTIFY_RX: {
         struct os_mbuf *om = event->notify_rx.om;
         uint16_t len = OS_MBUF_PKTLEN(om);
-        uint16_t attr_handle = event->notify_rx.attr_handle;
 
-        /* Debug: log all notify events */
-        ESP_LOGI(TAG, "NOTIFY_RX: attr=%d len=%d", attr_handle, len);
-        ESP_LOG_BUFFER_HEX_LEVEL(TAG, event->notify_rx.om->om_data,
-                                 len < 32 ? len : 32, ESP_LOG_INFO);
+        /* Debug */
+        ESP_LOGD(TAG, "NOTIFY_RX: attr=%d len=%d",
+                 event->notify_rx.attr_handle, len);
 
-        if (len >= XBOX_REPORT_MIN_LEN) {
-            uint8_t data[XBOX_REPORT_MIN_LEN];
+        if (len >= 16) {
+            uint8_t data[64];
+            len = (len < sizeof(data)) ? len : sizeof(data);
             os_mbuf_copydata(om, 0, len, data);
 
-            if (data[0] == 0x01 && len >= 17) {
-                /* Main input report (legacy, 17-byte) */
-                xbox_gamepad_t gp = {0};
-
-                gp.axis_x   = (int32_t)(data[1]  | (data[2]  << 8));
-                gp.axis_y   = (int32_t)(data[3]  | (data[4]  << 8));
-                gp.axis_rx  = (int32_t)(data[5]  | (data[6]  << 8));
-                gp.axis_ry  = (int32_t)(data[7]  | (data[8]  << 8));
-                gp.brake    = (int32_t)((data[9]  | (data[10] << 8)) & 0x03FF);
-                gp.throttle = (int32_t)((data[11] | (data[12] << 8)) & 0x03FF);
-                gp.dpad     = data[13] & 0x0F;
-                gp.buttons  = (uint16_t)(data[14] | (data[15] << 8));
-
-                if (g_mutex) {
-                    xSemaphoreTake(g_mutex, portMAX_DELAY);
-                    g_gamepad = gp;
-                    xSemaphoreGive(g_mutex);
-                }
-            } else if (data[0] == 0x19) {
-                /* Input report (16-byte, 0x19 report ID) */
-                xbox_gamepad_t gp = {0};
-
-                gp.axis_x   = (int32_t)(data[1]  | (data[2]  << 8));
-                gp.axis_y   = (int32_t)(data[3]  | (data[4]  << 8));
-                gp.axis_rx  = (int32_t)(data[5]  | (data[6]  << 8));
-                gp.axis_ry  = (int32_t)(data[7]  | (data[8]  << 8));
-                gp.brake    = (int32_t)((data[9]  | (data[10] << 8)) & 0x03FF);
-                gp.throttle = (int32_t)((data[11] | (data[12] << 8)) & 0x03FF);
-                gp.buttons  = (uint16_t)(data[13] | (data[14] << 8));
-                gp.dpad     = 0;
-
-                if (g_mutex) {
-                    xSemaphoreTake(g_mutex, portMAX_DELAY);
-                    g_gamepad = gp;
-                    xSemaphoreGive(g_mutex);
-                }
-            } else if (data[0] == 0x04) {
-                /* Battery report */
+            /* Battery report */
+            if (data[0] == 0x04) {
                 ESP_LOGI(TAG, "🔋 Battery: %d%%", data[1]);
+                return 0;
+            }
+
+            /* Input report → parse via HID module */
+            xbox_gamepad_t gp = xbox_hid_parse(data, len);
+            if (g_mutex) {
+                xSemaphoreTake(g_mutex, portMAX_DELAY);
+                g_gamepad = gp;
+                xSemaphoreGive(g_mutex);
             }
         }
         return 0;
@@ -271,13 +230,11 @@ static int service_discovery_cb(uint16_t conn_handle,
     (void)conn_handle;
     (void)arg;
 
-
     if (error->status != 0 && error->status != BLE_HS_EDONE) {
         ESP_LOGE(TAG, "❌ Service discovery error: %d", error->status);
         return 0;
     }
 
-    /* svc == NULL means discovery complete */
     if (svc == NULL) {
         ESP_LOGI(TAG, "✅ Service discovery complete");
 
@@ -289,21 +246,17 @@ static int service_discovery_cb(uint16_t conn_handle,
 
         ESP_LOGI(TAG, "Discovering HID characteristics [%d..%d]...",
                  g_hid_start_handle, g_hid_end_handle);
-
         ble_gattc_disc_all_chrs(g_conn_handle,
                                 g_hid_start_handle, g_hid_end_handle,
                                 char_discovery_cb, NULL);
         return 0;
     }
 
-
-    /* Print each discovered service */
     char uuid_str[BLE_UUID_STR_LEN];
     ble_uuid_to_str(&svc->uuid.u, uuid_str);
     ESP_LOGI(TAG, "Service: %s [%d..%d]", uuid_str,
              svc->start_handle, svc->end_handle);
 
-    /* Record HID service handle range */
     if (svc->uuid.u.type == BLE_UUID_TYPE_16 &&
         svc->uuid.u16.value == HID_SVC_UUID) {
         g_hid_start_handle = svc->start_handle;
@@ -335,18 +288,14 @@ static int char_discovery_cb(uint16_t conn_handle,
 
     char uuid_str[BLE_UUID_STR_LEN];
     ble_uuid_to_str(&chr->uuid.u, uuid_str);
-
     ESP_LOGI(TAG, "  Char: %s handle=%d props=0x%02X",
              uuid_str, chr->val_handle, chr->properties);
 
-    /* If this is the HID Report char with Notify support → discover CCCD */
-    /* Save Report Map handle for later read */
     if (chr->uuid.u.type == BLE_UUID_TYPE_16 &&
         chr->uuid.u16.value == HID_REPORT_MAP_UUID) {
         g_report_map_handle = chr->val_handle;
     }
 
-    /* Save HID Information handle */
     if (chr->uuid.u.type == BLE_UUID_TYPE_16 &&
         chr->uuid.u16.value == HID_INFO_UUID) {
         g_hid_info_handle = chr->val_handle;
@@ -355,7 +304,6 @@ static int char_discovery_cb(uint16_t conn_handle,
     if (chr->uuid.u.type == BLE_UUID_TYPE_16 &&
         chr->uuid.u16.value == HID_REPORT_UUID &&
         (chr->properties & BLE_GATT_CHR_PROP_NOTIFY)) {
-
         ESP_LOGI(TAG, "Found HID Report, discovering descriptors...");
         ble_gattc_disc_all_dscs(g_conn_handle,
                                 chr->val_handle, g_hid_end_handle,
@@ -388,11 +336,9 @@ static int desc_discovery_cb(uint16_t conn_handle,
     ble_uuid_to_str(&dsc->uuid.u, uuid_str);
     ESP_LOGI(TAG, "    Desc: %s handle=%d", uuid_str, dsc->handle);
 
-    /* Found CCCD → enable Notifications */
     if (dsc->uuid.u.type == BLE_UUID_TYPE_16 &&
         dsc->uuid.u16.value == CCCD_UUID) {
-
-        uint16_t enable = 0x0001;  /* Enable notifications */
+        uint16_t enable = 0x0001;
         int rc = ble_gattc_write_flat(g_conn_handle, dsc->handle,
                                       &enable, sizeof(enable),
                                       write_cb, NULL);
@@ -419,7 +365,6 @@ static int write_cb(uint16_t conn_handle,
         ESP_LOGI(TAG, "✅ Subscribed to HID Report!");
         g_connected = true;
 
-        /* Read Report Map to complete HID init (Xbox requires this) */
         if (g_report_map_handle != 0) {
             ESP_LOGI(TAG, "Reading Report Map (handle=%d)...", g_report_map_handle);
             int rc = ble_gattc_read(g_conn_handle, g_report_map_handle,
@@ -436,7 +381,7 @@ static int write_cb(uint16_t conn_handle,
 }
 
 /* =====================================================================
- *    Read Callback (Report Map read to complete HID init)
+ *    Read Callback (Report Map → HID Information)
  * ===================================================================== */
 static int read_cb(uint16_t conn_handle,
                    const struct ble_gatt_error *error,
@@ -448,7 +393,6 @@ static int read_cb(uint16_t conn_handle,
         uint16_t len = OS_MBUF_PKTLEN(attr->om);
         ESP_LOGI(TAG, "✅ Read OK (handle=%d, %d bytes)", attr->handle, len);
 
-        /* After Report Map, also read HID Information to complete init */
         if (attr->handle == g_report_map_handle && g_hid_info_handle != 0) {
             ESP_LOGI(TAG, "Reading HID Information (handle=%d)...", g_hid_info_handle);
             int rc = ble_gattc_read(g_conn_handle, g_hid_info_handle,
@@ -472,16 +416,16 @@ static void start_scan(void) {
     ESP_LOGI(TAG, "Scanning for Xbox controller...");
 
     struct ble_gap_disc_params params = {
-        .itvl              = 0x0010,   /* 16 * 0.625ms = 10ms */
+        .itvl              = 0x0010,
         .window            = 0x0010,
         .filter_policy     = 0,
         .limited           = 0,
-        .passive           = 0,        /* active scan */
+        .passive           = 0,
         .filter_duplicates = 0,
     };
 
     int rc = ble_gap_disc(BLE_OWN_ADDR_PUBLIC,
-                          SCAN_DURATION_MS * 1000 / 625,  /* ms → ticks */
+                          SCAN_DURATION_MS * 1000 / 625,
                           &params,
                           gap_event_cb,
                           NULL);
@@ -493,28 +437,26 @@ static void start_scan(void) {
 }
 
 /* =====================================================================
- *    Public API — callable from main.c / controller.c
+ *    Public API
  * ===================================================================== */
 
 void xbox_ble_init(int max_devices) {
     (void)max_devices;
 
-    /* 1. Create mutex for thread-safe gamepad state */
     g_mutex = xSemaphoreCreateMutex();
     if (g_mutex == NULL) {
         ESP_LOGE(TAG, "❌ Failed to create mutex");
         return;
     }
 
-    /* 2. Reset state */
-    g_connected        = false;
-    g_conn_handle      = BLE_HS_CONN_HANDLE_NONE;
-    g_hid_start_handle = 0;
-    g_hid_end_handle   = 0;
+    g_connected         = false;
+    g_conn_handle       = BLE_HS_CONN_HANDLE_NONE;
+    g_hid_start_handle  = 0;
+    g_hid_end_handle    = 0;
+    g_report_map_handle = 0;
+    g_hid_info_handle   = 0;
 
     ESP_LOGI(TAG, "NimBLE HID host ready (Bonding+SC+JustWorks)");
-
-    /* 3. Start scanning (runs in NimBLE host task context) */
     start_scan();
 }
 

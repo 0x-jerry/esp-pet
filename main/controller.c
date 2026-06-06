@@ -1,5 +1,6 @@
 #include "controller.h"
-#include "xbox_ble.h"
+#include "xbox/xbox_hid.h"
+#include "xbox/xbox_ble.h"
 #include <string.h>
 
 static uint16_t g_prev_buttons = 0;
