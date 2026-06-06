@@ -6,6 +6,7 @@
  *        discover CCCD → subscribe → NOTIFY_RX → xbox_hid_parse()
  */
 #include "xbox_ble.h"
+#include "xbox_hid.h"
 
 #include <stddef.h>
 #include <string.h>
@@ -36,7 +37,7 @@
 
 /* ── Globals ───────────────────────────────────────────────────────── */
 static SemaphoreHandle_t g_mutex       = NULL;
-static xbox_gamepad_t    g_gamepad     = {0};
+static gamepad_state_t   g_gamepad     = {0};
 static bool              g_connected   = false;
 static uint16_t          g_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 
@@ -199,7 +200,7 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg) {
             }
 
             /* Input report → parse via HID module */
-            xbox_gamepad_t gp = xbox_hid_parse(data, len);
+            gamepad_state_t gp = xbox_hid_parse(data, len);
             if (g_mutex) {
                 xSemaphoreTake(g_mutex, portMAX_DELAY);
                 g_gamepad = gp;
@@ -460,8 +461,8 @@ void xbox_ble_init(int max_devices) {
     start_scan();
 }
 
-xbox_gamepad_t xbox_ble_get_gamepad(void) {
-    xbox_gamepad_t gp = {0};
+gamepad_state_t xbox_ble_get_gamepad(void) {
+    gamepad_state_t gp = {0};
     if (g_mutex) {
         xSemaphoreTake(g_mutex, portMAX_DELAY);
         gp = g_gamepad;

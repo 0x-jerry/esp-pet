@@ -11,19 +11,24 @@
 #define TAG "xbox_hid"
 
 /* ── HID report (16-byte) ──────────────────────────────────────────── */
-static xbox_gamepad_t parse_hid(const uint8_t *data) {
-    xbox_gamepad_t gp = {0};
+static gamepad_state_t parse_hid(const uint8_t *data) {
+    gamepad_state_t gp = {0};
 
-    gp.buttons  = (uint16_t)(data[13] | (data[14] << 8));
+    controller_set_button(&gp, CTRL_A, data[13] & (1 << 0));
+    controller_set_button(&gp, CTRL_B, data[13] & (1 << 1));
+    controller_set_button(&gp, CTRL_X, data[13] & (1 << 3));
+    controller_set_button(&gp, CTRL_Y, data[13] & (1 << 4));
+    controller_set_button(&gp, CTRL_LB, data[13] & (1 << 6));
+    controller_set_button(&gp, CTRL_RB, data[13] & (1 << 7));
 
     return gp;
 }
 
 /* ── Public API ─────────────────────────────────────────────────────── */
 
-xbox_gamepad_t xbox_hid_parse(const uint8_t *data, uint16_t len) {
+gamepad_state_t xbox_hid_parse(const uint8_t *data, uint16_t len) {
     if (data == NULL) {
-        return (xbox_gamepad_t){0};
+        return (gamepad_state_t){0};
     }
 
     ESP_LOGI(TAG, "HID report 0:%02X 1:%02X 2:%02X 3:%02X 4:%02X 5:%02X 6:%02X 7:%02X 8:%02X 9:%02X 10:%02X 11:%02X 12:%02X 13:%02X 14:%02X 15:%02X", 

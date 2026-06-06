@@ -1,7 +1,7 @@
 #include "buttons.h"
-#include "controller.h"
+#include "gamepad/controller.h"
 #include "display.h"
-#include "xbox/xbox_ble.h"
+#include "gamepad/xbox_ble.h"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "nvs_flash.h"
@@ -169,7 +169,7 @@ static void display_task(void *param) {
 }
 
 static void nimble_host_task(void *param) {
-    nimble_port_run();   // 永不返回
+    nimble_port_run();   // never return
 }
 
 static void on_sync(void) {
