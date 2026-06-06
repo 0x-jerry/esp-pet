@@ -209,6 +209,22 @@ int display_draw_char(int16_t x, int16_t y, char c, uint16_t color, uint16_t bg_
     return x + FONT_WIDTH;
 }
 
+/**
+ * @brief Render a string on the framebuffer (supports newline / word wrap)
+ *
+ * Walks through the string character-by-character and calls display_draw_char()
+ * for each one.  Newlines ('\n') force a line break.  If max_width is positive,
+ * text is automatically wrapped at word boundaries when possible, or at character
+ * boundaries as a fallback.
+ *
+ * @param x         Starting column (top-left)
+ * @param y         Starting row (top-left)
+ * @param text      Null-terminated ASCII string to draw
+ * @param color     Character colour (RGB565)
+ * @param bg_color  Background colour (RGB565)
+ * @param max_width Maximum pixel width before automatic wrapping (0 = no wrap)
+ * @return int      The final y + FONT_HEIGHT, useful for laying out the next line
+ */
 int display_draw_text(int16_t x, int16_t y, const char *text, uint16_t color, uint16_t bg_color, int16_t max_width) {
     int16_t cur_x = x;
     int16_t cur_y = y;
@@ -216,7 +232,7 @@ int display_draw_text(int16_t x, int16_t y, const char *text, uint16_t color, ui
     while (*text) {
         char c = *text;
 
-        // Newline
+        /* ---- 1. Explicit newline ---- */
         if (c == '\n') {
             cur_x = x;
             cur_y += FONT_HEIGHT;
@@ -224,15 +240,16 @@ int display_draw_text(int16_t x, int16_t y, const char *text, uint16_t color, ui
             continue;
         }
 
-        // Word wrap: check if next word fits
+        /* ---- 2. Word wrap: peek ahead at the next word on a space ---- */
         if (c == ' ' && max_width > 0) {
-            // Look ahead to measure next word
             const char *p = text + 1;
             int word_w = 0;
+            // Measure the pixel width of the next word (until space / newline / end)
             while (*p && *p != ' ' && *p != '\n') {
                 word_w += FONT_WIDTH;
                 p++;
             }
+            // If the current line can't fit the next word, wrap
             if (cur_x + word_w > x + max_width) {
                 cur_x = x;
                 cur_y += FONT_HEIGHT;
@@ -241,12 +258,13 @@ int display_draw_text(int16_t x, int16_t y, const char *text, uint16_t color, ui
             }
         }
 
-        // Character wrap at end of line
+        /* ---- 3. Character-level line wrap ---- */
         if (max_width > 0 && cur_x + FONT_WIDTH > x + max_width) {
             cur_x = x;
             cur_y += FONT_HEIGHT;
         }
 
+        /* ---- 4. Draw the current character ---- */
         cur_x = display_draw_char(cur_x, cur_y, c, color, bg_color);
         text++;
     }
