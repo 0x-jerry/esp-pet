@@ -1,6 +1,7 @@
 #include "buttons.h"
 #include "gamepad/controller.h"
 #include "display.h"
+#include "graphics.h"
 #include "gamepad/xbox_ble.h"
 #include "esp_log.h"
 #include "esp_random.h"
@@ -60,7 +61,7 @@ static void draw_face_circle(void) {
     for (int16_t dy = -r; dy <= r; dy++) {
         for (int16_t dx = -r; dx <= r; dx++) {
             if (dx * dx + dy * dy <= r * r) {
-                display_draw_pixel(cx + dx, cy + dy, COLOR_YELLOW);
+                graphics_draw_pixel(cx + dx, cy + dy, COLOR_YELLOW);
             }
         }
     }
@@ -68,37 +69,37 @@ static void draw_face_circle(void) {
 
 static void draw_smiley(face_expression_t expr) {
     int16_t sz = (FACE_R + 6) * 2;
-    display_fill_rect(FACE_CX - (FACE_R + 6), FACE_CY - (FACE_R + 6),
+    graphics_fill_rect(FACE_CX - (FACE_R + 6), FACE_CY - (FACE_R + 6),
                       sz, sz, COLOR_BLACK);
     draw_face_circle();
 
     switch (expr) {
     case FACE_HAPPY:
-        display_fill_rect(EYE_LX, EYE_Y, EYE_W, EYE_H, COLOR_BLACK);
-        display_fill_rect(EYE_RX, EYE_Y, EYE_W, EYE_H, COLOR_BLACK);
+        graphics_fill_rect(EYE_LX, EYE_Y, EYE_W, EYE_H, COLOR_BLACK);
+        graphics_fill_rect(EYE_RX, EYE_Y, EYE_W, EYE_H, COLOR_BLACK);
         {
             int16_t my = FACE_CY + 5;
             for (int16_t dx = -7; dx <= 7; dx++) {
                 int16_t dy = -(dx * dx) / 9 + 3;
-                display_draw_pixel(FACE_CX + dx, my + dy, COLOR_BLACK);
-                display_draw_pixel(FACE_CX + dx, my + dy + 1, COLOR_BLACK);
+                graphics_draw_pixel(FACE_CX + dx, my + dy, COLOR_BLACK);
+                graphics_draw_pixel(FACE_CX + dx, my + dy + 1, COLOR_BLACK);
             }
         }
         break;
     case FACE_NEUTRAL:
-        display_fill_rect(EYE_LX, EYE_Y, EYE_W, EYE_H, COLOR_BLACK);
-        display_fill_rect(EYE_RX, EYE_Y, EYE_W, EYE_H, COLOR_BLACK);
-        display_fill_rect(FACE_CX - 5, FACE_CY + 8, 10, 2, COLOR_BLACK);
+        graphics_fill_rect(EYE_LX, EYE_Y, EYE_W, EYE_H, COLOR_BLACK);
+        graphics_fill_rect(EYE_RX, EYE_Y, EYE_W, EYE_H, COLOR_BLACK);
+        graphics_fill_rect(FACE_CX - 5, FACE_CY + 8, 10, 2, COLOR_BLACK);
         break;
     case FACE_SAD:
-        display_fill_rect(EYE_LX, EYE_Y + 1, EYE_W, EYE_H, COLOR_BLACK);
-        display_fill_rect(EYE_RX, EYE_Y + 1, EYE_W, EYE_H, COLOR_BLACK);
+        graphics_fill_rect(EYE_LX, EYE_Y + 1, EYE_W, EYE_H, COLOR_BLACK);
+        graphics_fill_rect(EYE_RX, EYE_Y + 1, EYE_W, EYE_H, COLOR_BLACK);
         {
             int16_t my = FACE_CY + 14;
             for (int16_t dx = -7; dx <= 7; dx++) {
                 int16_t dy = dx * dx / 9 - 3;
-                display_draw_pixel(FACE_CX + dx, my + dy, COLOR_BLACK);
-                display_draw_pixel(FACE_CX + dx, my + dy + 1, COLOR_BLACK);
+                graphics_draw_pixel(FACE_CX + dx, my + dy, COLOR_BLACK);
+                graphics_draw_pixel(FACE_CX + dx, my + dy + 1, COLOR_BLACK);
             }
         }
         break;
@@ -109,8 +110,8 @@ static void draw_smiley(face_expression_t expr) {
             for (int16_t dy = -4; dy <= 4; dy++) {
                 for (int16_t dx = -3; dx <= 3; dx++) {
                     if (dx * dx + dy * dy <= 16) {
-                        display_draw_pixel(ec + dx, EYE_Y + dy, COLOR_BLACK);
-                        display_draw_pixel(ecr + dx, EYE_Y + dy, COLOR_BLACK);
+                        graphics_draw_pixel(ec + dx, EYE_Y + dy, COLOR_BLACK);
+                        graphics_draw_pixel(ecr + dx, EYE_Y + dy, COLOR_BLACK);
                     }
                 }
             }
@@ -118,7 +119,7 @@ static void draw_smiley(face_expression_t expr) {
         for (int16_t dy = -4; dy <= 4; dy++) {
             for (int16_t dx = -4; dx <= 4; dx++) {
                 if (dx * dx + dy * dy <= 18) {
-                    display_draw_pixel(FACE_CX + dx, FACE_CY + 8 + dy, COLOR_BLACK);
+                    graphics_draw_pixel(FACE_CX + dx, FACE_CY + 8 + dy, COLOR_BLACK);
                 }
             }
         }
@@ -147,25 +148,25 @@ static void draw_debug_gamepad(const gamepad_state_t *gs) {
     int y = DEBUG_Y;
 
     /* clear debug area */
-    display_fill_rect(DEBUG_X, y, DEBUG_W, DEBUG_H, COLOR_BLACK);
+    graphics_fill_rect(DEBUG_X, y, DEBUG_W, DEBUG_H, COLOR_BLACK);
 
     /* row 0: title */
-    display_draw_text(DEBUG_X, y, "--- Gamepad ---", COLOR_CYAN, COLOR_BLACK, 0);
+    graphics_draw_text(DEBUG_X, y, "--- Gamepad ---", COLOR_CYAN, COLOR_BLACK, 0);
     y += 8;
 
     /* row 1: L stick */
     snprintf(buf, sizeof(buf), "L X:%+4d Y:%+4d", (int)gs->axis_x, (int)gs->axis_y);
-    display_draw_text(DEBUG_X, y, buf, COLOR_WHITE, COLOR_BLACK, 0);
+    graphics_draw_text(DEBUG_X, y, buf, COLOR_WHITE, COLOR_BLACK, 0);
     y += 8;
 
     /* row 2: R stick */
     snprintf(buf, sizeof(buf), "R X:%+4d Y:%+4d", (int)gs->axis_rx, (int)gs->axis_ry);
-    display_draw_text(DEBUG_X, y, buf, COLOR_WHITE, COLOR_BLACK, 0);
+    graphics_draw_text(DEBUG_X, y, buf, COLOR_WHITE, COLOR_BLACK, 0);
     y += 8;
 
     /* row 3: triggers */
     snprintf(buf, sizeof(buf), "LT:%3d  RT:%3d", (int)gs->brake, (int)gs->throttle);
-    display_draw_text(DEBUG_X, y, buf, COLOR_WHITE, COLOR_BLACK, 0);
+    graphics_draw_text(DEBUG_X, y, buf, COLOR_WHITE, COLOR_BLACK, 0);
     y += 8;
 
     /* row 4: A B X Y LB RB */
@@ -173,7 +174,7 @@ static void draw_debug_gamepad(const gamepad_state_t *gs) {
     for (int i = 0; i < 6; i++) {
         bool on = controller_button_is_pressed(row1[i]);
         snprintf(buf, sizeof(buf), "[%c]%-2s", on ? '*' : ' ', btn_names[row1[i]]);
-        display_draw_text(DEBUG_X + i * 36, y, buf,
+        graphics_draw_text(DEBUG_X + i * 36, y, buf,
                           on ? COLOR_YELLOW : COLOR_GRAY, COLOR_BLACK, 0);
     }
     y += 8;
@@ -184,34 +185,34 @@ static void draw_debug_gamepad(const gamepad_state_t *gs) {
     for (int i = 0; i < 6; i++) {
         bool on = controller_button_is_pressed(row2[i]);
         snprintf(buf, sizeof(buf), "[%c]%-2s", on ? '*' : ' ', btn_names[row2[i]]);
-        display_draw_text(DEBUG_X + i * 36, y, buf,
+        graphics_draw_text(DEBUG_X + i * 36, y, buf,
                           on ? COLOR_YELLOW : COLOR_GRAY, COLOR_BLACK, 0);
     }
 }
 
 /* ── Draw the initial static UI (title, hints, expression bar, gradient) ── */
 static void draw_static_ui(void) {
-    display_fill(COLOR_BLACK);
+    graphics_fill(COLOR_BLACK);
 
     /* title */
-    display_draw_text(10, LAYOUT_TITLE_Y, "ESP-PET", COLOR_WHITE, COLOR_BLACK, 0);
-    display_fill_rect(10, LAYOUT_UNDERLINE_Y, 220, 2, COLOR_WHITE);
+    graphics_draw_text(10, LAYOUT_TITLE_Y, "ESP-PET", COLOR_WHITE, COLOR_BLACK, 0);
+    graphics_fill_rect(10, LAYOUT_UNDERLINE_Y, 220, 2, COLOR_WHITE);
 
     /* hints */
-    display_draw_text(10, LAYOUT_HINT1_Y, "Btn / A: next face", COLOR_GREEN, COLOR_BLACK, 0);
-    display_draw_text(10, LAYOUT_HINT2_Y, "Talk / B: random",   COLOR_GREEN, COLOR_BLACK, 0);
+    graphics_draw_text(10, LAYOUT_HINT1_Y, "Btn / A: next face", COLOR_GREEN, COLOR_BLACK, 0);
+    graphics_draw_text(10, LAYOUT_HINT2_Y, "Talk / B: random",   COLOR_GREEN, COLOR_BLACK, 0);
 
     /* expression label bar */
-    display_fill_rect(10, LAYOUT_EXPR_Y, 220, LAYOUT_EXPR_H, COLOR_DARK_GRAY);
-    display_draw_text(16, LAYOUT_EXPR_Y + 5, "Expression:", COLOR_WHITE, COLOR_DARK_GRAY, 0);
-    display_draw_text(98, LAYOUT_EXPR_Y + 5, face_labels[FACE_NEUTRAL],
+    graphics_fill_rect(10, LAYOUT_EXPR_Y, 220, LAYOUT_EXPR_H, COLOR_DARK_GRAY);
+    graphics_draw_text(16, LAYOUT_EXPR_Y + 5, "Expression:", COLOR_WHITE, COLOR_DARK_GRAY, 0);
+    graphics_draw_text(98, LAYOUT_EXPR_Y + 5, face_labels[FACE_NEUTRAL],
                       COLOR_YELLOW, COLOR_DARK_GRAY, 0);
 
     /* controller status */
-    display_draw_text(10, LAYOUT_STATUS_Y, "Ctrl: searching...", COLOR_GRAY, COLOR_BLACK, 0);
+    graphics_draw_text(10, LAYOUT_STATUS_Y, "Ctrl: searching...", COLOR_GRAY, COLOR_BLACK, 0);
 
     /* bottom rainbow bar (full hue sweep left→right) */
-    display_draw_rainbow_h(0, LAYOUT_GRAD_Y, DISPLAY_WIDTH, LAYOUT_GRAD_H);
+    graphics_draw_rainbow_h(0, LAYOUT_GRAD_Y, DISPLAY_WIDTH, LAYOUT_GRAD_H);
 }
 
 static void display_task(void *param) {
@@ -244,8 +245,8 @@ static void display_task(void *param) {
         /* ── Update expression label ─────────────────────────── */
         {
             int ey = LAYOUT_EXPR_Y + 5;
-            display_fill_rect(90, LAYOUT_EXPR_Y, 140, LAYOUT_EXPR_H, COLOR_DARK_GRAY);
-            display_draw_text(98, ey, face_labels[current_face],
+            graphics_fill_rect(90, LAYOUT_EXPR_Y, 140, LAYOUT_EXPR_H, COLOR_DARK_GRAY);
+            graphics_draw_text(98, ey, face_labels[current_face],
                               COLOR_YELLOW, COLOR_DARK_GRAY, 0);
         }
 
@@ -256,14 +257,14 @@ static void display_task(void *param) {
             draw_debug_gamepad(&gs);
         } else if (last_ctrl_conn) {
             /* Clear stale debug data when gamepad disconnects */
-            display_fill_rect(DEBUG_X, DEBUG_Y, DEBUG_W, DEBUG_H, COLOR_BLACK);
+            graphics_fill_rect(DEBUG_X, DEBUG_Y, DEBUG_W, DEBUG_H, COLOR_BLACK);
         }
 
         /* ── Connection status ───────────────────────────────── */
         if (ctrl_conn != last_ctrl_conn) {
             last_ctrl_conn = ctrl_conn;
-            display_fill_rect(10, LAYOUT_STATUS_Y, 220, 10, COLOR_BLACK);
-            display_draw_text(10, LAYOUT_STATUS_Y,
+            graphics_fill_rect(10, LAYOUT_STATUS_Y, 220, 10, COLOR_BLACK);
+            graphics_draw_text(10, LAYOUT_STATUS_Y,
                 ctrl_conn ? "Ctrl: connected" : "Ctrl: searching...",
                 ctrl_conn ? COLOR_GREEN : COLOR_GRAY, COLOR_BLACK, 0);
         }
@@ -314,17 +315,17 @@ void app_main(void) {
 
     /* Color test */
     ESP_LOGI(TAG, "Color test: Red");
-    display_fill(COLOR_RED);
+    graphics_fill(COLOR_RED);
     display_flush();
     vTaskDelay(pdMS_TO_TICKS(2000));
 
     ESP_LOGI(TAG, "Color test: Green");
-    display_fill(COLOR_GREEN);
+    graphics_fill(COLOR_GREEN);
     display_flush();
     vTaskDelay(pdMS_TO_TICKS(2000));
 
     ESP_LOGI(TAG, "Color test: Blue");
-    display_fill(COLOR_BLUE);
+    graphics_fill(COLOR_BLUE);
     display_flush();
     vTaskDelay(pdMS_TO_TICKS(2000));
 

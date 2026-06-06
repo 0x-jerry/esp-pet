@@ -15,59 +15,11 @@
 #define TFT_MOSI 7
 #define TFT_SCLK 6
 
-// Colors (RGB565)
-#define COLOR_BLACK   0x0000
-#define COLOR_WHITE   0xFFFF
-#define COLOR_RED     0xF800
-#define COLOR_GREEN   0x07E0
-#define COLOR_BLUE    0x001F
-#define COLOR_YELLOW  0xFFE0
-#define COLOR_CYAN    0x07FF
-#define COLOR_MAGENTA 0xF81F
-#define COLOR_GRAY    0x8410
-#define COLOR_DARK_GRAY 0x4208
-
-// Color from RGB888 components
-#define RGB565(r, g, b) ((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3))
-
 /**
  * Initialize the ST7789 display and allocate framebuffer.
  * Must be called once before any other display functions.
  */
 void display_init(void);
-
-/**
- * Fill the entire framebuffer with a solid color.
- */
-void display_fill(uint16_t color);
-
-/**
- * Draw a filled rectangle in the framebuffer.
- */
-void display_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
-
-/**
- * Draw a pixel in the framebuffer.
- */
-void display_draw_pixel(int16_t x, int16_t y, uint16_t color);
-
-/**
- * Copy a sprite bitmap into the framebuffer.
- * data must be an array of uint16_t RGB565 pixels, row-major.
- */
-void display_draw_sprite(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t *data);
-
-/**
- * Draw a single character using the built-in 6x8 font at (x, y).
- * Returns the x position after the character (for chaining).
- */
-int display_draw_char(int16_t x, int16_t y, char c, uint16_t color, uint16_t bg_color);
-
-/**
- * Draw a null-terminated string with the built-in font.
- * Wraps text within the given width. Returns the y position after drawing.
- */
-int display_draw_text(int16_t x, int16_t y, const char *text, uint16_t color, uint16_t bg_color, int16_t max_width);
 
 /**
  * Flush the framebuffer to the physical display via SPI.
@@ -87,7 +39,7 @@ void display_set_backlight(uint8_t percent);
 uint16_t *display_get_framebuffer(void);
 
 /**
- * Draw a horizontal rainbow (full hue sweep) bar.
- * Cycles through all hues left-to-right to test colour reproduction.
+ * Mark the framebuffer as dirty, ensuring the next flush() sends the update.
+ * Called automatically by the graphics_* drawing functions.
  */
-void display_draw_rainbow_h(int16_t x, int16_t y, int16_t w, int16_t h);
+void display_mark_dirty(void);
