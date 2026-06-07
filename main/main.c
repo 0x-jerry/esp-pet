@@ -309,22 +309,6 @@ void app_main(void) {
     /* ── 3. Peripherals ────────────────────────────────────── */
     display_init();
 
-    /* Color test */
-    ESP_LOGI(TAG, "Color test: Red");
-    graphics_fill(COLOR_RED);
-    display_flush();
-    vTaskDelay(pdMS_TO_TICKS(500));
-
-    ESP_LOGI(TAG, "Color test: Green");
-    graphics_fill(COLOR_GREEN);
-    display_flush();
-    vTaskDelay(pdMS_TO_TICKS(500));
-
-    ESP_LOGI(TAG, "Color test: Blue");
-    graphics_fill(COLOR_BLUE);
-    display_flush();
-    vTaskDelay(pdMS_TO_TICKS(500));
-
     buttons_init();
     controller_init();
 
