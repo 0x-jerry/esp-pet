@@ -140,7 +140,7 @@ int graphics_draw_text(int16_t x, int16_t y, const char *text, uint16_t color, u
 
 // ── Rainbow ───────────────────────────────────────────────────
 
-static uint16_t hue_to_rgb565(int hue) {
+static uint16_t hue_to_color(int hue) {
     int h = hue % 360;
     int sector = h / 60;
     int fract  = h - sector * 60;
@@ -158,7 +158,7 @@ static uint16_t hue_to_rgb565(int hue) {
         default: r = 255; g = p;   b = q;   break;
     }
 
-    return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+    return COLOR(r, g, b);
 }
 
 void graphics_draw_rainbow_h(int16_t x, int16_t y, int16_t w, int16_t h) {
@@ -171,7 +171,7 @@ void graphics_draw_rainbow_h(int16_t x, int16_t y, int16_t w, int16_t h) {
     int16_t denom = (w > 1) ? (w - 1) : 1;
     for (int16_t col = 0; col < w; col++) {
         int hue = (360 * col) / denom;
-        uint16_t color = hue_to_rgb565(hue);
+        uint16_t color = hue_to_color(hue);
         uint16_t *p = fb_pixel(x + col, y);
         for (int16_t row = 0; row < h; row++) {
             *p = color;

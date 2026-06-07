@@ -34,7 +34,7 @@ void display_set_backlight(uint8_t percent);
 
 /**
  * Get a pointer to the framebuffer for direct manipulation.
- * Size is DISPLAY_WIDTH * DISPLAY_HEIGHT pixels (RGB565 = 2 bytes each).
+ * Size is DISPLAY_WIDTH * DISPLAY_HEIGHT pixels (2 bytes each).
  */
 uint16_t *display_get_framebuffer(void);
 

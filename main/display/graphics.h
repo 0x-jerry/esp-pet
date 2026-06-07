@@ -4,20 +4,19 @@
 #include <stdbool.h>
 #include "display.h"
 
-// Colors (RGB565)
-#define COLOR_BLACK   0x0000
-#define COLOR_WHITE   0xFFFF
-#define COLOR_RED     0xF800
-#define COLOR_GREEN   0x07E0
-#define COLOR_BLUE    0x001F
-#define COLOR_YELLOW  0xFFE0
-#define COLOR_CYAN    0x07FF
-#define COLOR_MAGENTA 0xF81F
-#define COLOR_GRAY    0x8410
-#define COLOR_DARK_GRAY 0x4208
+// Helper: convert R/G/B (0-255) to packed 16-bit colour (RGB 5-6-5)
+#define COLOR(r, g, b) ((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3))
 
-// Color from RGB888 components
-#define RGB565(r, g, b) ((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3))
+#define COLOR_BLACK     COLOR(0, 0, 0)
+#define COLOR_WHITE     COLOR(255, 255, 255)
+#define COLOR_RED       COLOR(255, 0, 0)
+#define COLOR_GREEN     COLOR(0, 255, 0)
+#define COLOR_BLUE      COLOR(0, 0, 255)
+#define COLOR_YELLOW    COLOR(255, 255, 0)
+#define COLOR_CYAN      COLOR(0, 255, 255)
+#define COLOR_MAGENTA   COLOR(255, 0, 255)
+#define COLOR_GRAY      COLOR(128, 128, 128)
+#define COLOR_DARK_GRAY COLOR(64, 64, 64)
 
 /**
  * Fill the entire framebuffer with a solid color.
@@ -36,7 +35,7 @@ void graphics_draw_pixel(int16_t x, int16_t y, uint16_t color);
 
 /**
  * Copy a sprite bitmap into the framebuffer.
- * data must be an array of uint16_t RGB565 pixels, row-major.
+ * data must be an array of uint16_t pixels, row-major.
  */
 void graphics_draw_sprite(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t *data);
 

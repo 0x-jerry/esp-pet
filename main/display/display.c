@@ -1,6 +1,8 @@
 #include "display.h"
 
 #include "esp_lcd_panel_io.h"
+#include "esp_lcd_panel_ops.h"
+#include "esp_lcd_panel_st7789.h"
 #include "driver/spi_master.h"
 #include "driver/ledc.h"
 #include "driver/gpio.h"
@@ -27,6 +29,7 @@ static const char *TAG = "display";
 
 // Panel handles
 static esp_lcd_panel_io_handle_t io_handle = NULL;
+static esp_lcd_panel_handle_t panel_handle = NULL;
 
 // Framebuffer
 static uint16_t *framebuffer = NULL;
@@ -36,7 +39,6 @@ static uint16_t *framebuffer = NULL;
 
 // DMA-safe swap buffer (allocated once in display_init)
 static uint16_t *swap_buf = NULL;
-static const uint8_t caset_cmd[4] = {0, 0, 0, (uint8_t)(DISPLAY_WIDTH - 1)};
 
 // Skips flush when nothing changed
 static bool dirty = false;
@@ -101,29 +103,30 @@ void display_init(void) {
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LCD_HOST, &io_cfg, &io_handle));
 
-    // Hardware reset
-    gpio_set_direction(TFT_RST, GPIO_MODE_OUTPUT);
-    gpio_set_level(TFT_RST, 0);
-    vTaskDelay(pdMS_TO_TICKS(10));
-    gpio_set_level(TFT_RST, 1);
-    vTaskDelay(pdMS_TO_TICKS(120));
+    // Create ST7789 panel (handles init sequence, rotation, color order)
+    esp_lcd_panel_dev_config_t panel_config = {
+        .reset_gpio_num = TFT_RST,
+        .rgb_ele_order  = LCD_RGB_ELEMENT_ORDER_RGB,
+        .bits_per_pixel = 16,
+        .data_endian = LCD_RGB_DATA_ENDIAN_LITTLE,
+    };
+    ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(io_handle, &panel_config, &panel_handle));
 
-    // ST7789 init sequence
-    // Sleep out
-    esp_lcd_panel_io_tx_param(io_handle, 0x11, NULL, 0);
-    vTaskDelay(pdMS_TO_TICKS(120));
+    // Reset and initialize the panel
+    ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
+    ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
 
-    uint8_t colmod = 0x55;  // COLMOD: 16-bit
-    esp_lcd_panel_io_tx_param(io_handle, 0x3A, &colmod, 1);
+    // 180° rotation (mirror both axes)
+    ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel_handle, true, true));
 
-    uint8_t madctl = 0x08;  // MADCTL: BGR order
-    esp_lcd_panel_io_tx_param(io_handle, 0x36, &madctl, 1);
+    // Y offset of 80 pixels (shifts content downward)
+    ESP_ERROR_CHECK(esp_lcd_panel_set_gap(panel_handle, 0, 80));
 
-    esp_lcd_panel_io_tx_param(io_handle, 0x21, NULL, 0);  // Inversion on
-    esp_lcd_panel_io_tx_param(io_handle, 0x13, NULL, 0);  // Normal mode
+    // Inversion on (ST7789 typical)
+    ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel_handle, true));
 
-    esp_lcd_panel_io_tx_param(io_handle, 0x29, NULL, 0);  // Display on
-    vTaskDelay(pdMS_TO_TICKS(20));
+    // Turn on display
+    ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
 
     // Allocate framebuffer & swap buffer
     size_t fb_size = DISPLAY_WIDTH * DISPLAY_HEIGHT * sizeof(uint16_t);
@@ -137,8 +140,8 @@ void display_init(void) {
     assert(framebuffer != NULL);
     memset(framebuffer, 0, fb_size);
 
-    swap_buf = heap_caps_malloc(DISPLAY_WIDTH * FLUSH_STRIP_H * sizeof(uint16_t),
-                                MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+    swap_buf = spi_bus_dma_memory_alloc(LCD_HOST,
+                          DISPLAY_WIDTH * FLUSH_STRIP_H * sizeof(uint16_t), 0);
     assert(swap_buf != NULL);
 
     ESP_LOGI(TAG, "Display initialized. FB at %p, size %zu", framebuffer, fb_size);
@@ -148,41 +151,29 @@ uint16_t *display_get_framebuffer(void) {
     return framebuffer;
 }
 
-// ── Internal: pixel address helper (used by flush, which operates directly on fb) ──
-
-static inline uint16_t *fb_pixel(int16_t x, int16_t y) {
-    return &framebuffer[y * DISPLAY_WIDTH + x];
-}
 
 // --- Flush to Display ---
 
 void display_flush(void) {
     if (!dirty) return;
 
-    esp_lcd_panel_io_tx_param(io_handle, 0x2A, caset_cmd, 4);
-
+    // Stream framebuffer in strips for DMA compatibility.
     for (int16_t y0 = 0; y0 < DISPLAY_HEIGHT; y0 += FLUSH_STRIP_H) {
         int16_t strip_h = FLUSH_STRIP_H;
         if (y0 + strip_h > DISPLAY_HEIGHT) strip_h = DISPLAY_HEIGHT - y0;
 
-        uint8_t raset_cmd[4] = {(uint8_t)(y0 >> 8), (uint8_t)y0,
-                               (uint8_t)((y0 + strip_h - 1) >> 8),
-                               (uint8_t)(y0 + strip_h - 1)};
-        esp_lcd_panel_io_tx_param(io_handle, 0x2B, raset_cmd, 4);
-
-        // Copy strip rows with 180° rotation + G↔B swap
-        uint16_t *dst = swap_buf;
-        for (int16_t row = DISPLAY_HEIGHT - 1 - y0;
-             row > DISPLAY_HEIGHT - 1 - (y0 + strip_h); row--) {
-            const uint16_t *src = fb_pixel(DISPLAY_WIDTH - 1, row);
-            for (int16_t col = 0; col < DISPLAY_WIDTH; col++) {
-                uint16_t c = *src--;
-                *dst++ = (c & 0xF800) | ((c & 0x001F) << 6) | ((c >> 5) & 0x001F);
-            }
+        // Copy strip rows to DMA-safe swap buffer
+        size_t strip_pixels = (size_t)DISPLAY_WIDTH * strip_h;
+        const uint16_t *src = &framebuffer[y0 * DISPLAY_WIDTH];
+        for (size_t i = 0; i < strip_pixels; i++) {
+            swap_buf[i] = src[i];
         }
 
-        size_t strip_bytes = (size_t)DISPLAY_WIDTH * strip_h * sizeof(uint16_t);
-        esp_lcd_panel_io_tx_color(io_handle, 0x2C, (const void *)swap_buf, strip_bytes);
+        ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(panel_handle,
+                          0, y0, DISPLAY_WIDTH, y0 + strip_h, swap_buf));
+        
+        // Wait a bit to avoid flooding the LCD with too many commands at once.
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 
     dirty = false;

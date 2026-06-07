@@ -215,11 +215,9 @@ static void draw_static_ui(void) {
 
 static void display_task(void *param) {
     draw_static_ui();
-    display_flush();
 
     face_expression_t current_face = FACE_NEUTRAL;
     draw_smiley(current_face);
-    display_flush();
 
     bool last_ctrl_conn = false;
 

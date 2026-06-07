@@ -92,7 +92,7 @@
 ### Phase 5: Pixel Art & UI Rendering
 *Depends on Phase 1 (display), Phase 2 (pet state), Phase 4 (AI responses).*
 
-1. **Create pixel art sprites** — define pet sprite as a `const uint16_t[]` bitmap array (e.g., 48x48 pixels, RGB565). Create multiple frames for idle animation, plus mood variants (happy, sad, hungry).
+1. **Create pixel art sprites** — define pet sprite as a `const uint16_t[]` bitmap array (e.g., 48x48 pixels). Create multiple frames for idle animation, plus mood variants (happy, sad, hungry).
 2. **Implement sprite rendering** — `display_draw_sprite(x, y, width, height, data)` that copies pixel data to framebuffer.
 3. **Implement simple idle animation** — cycle through 2-3 sprite frames every ~500ms using timer.
 4. **Build main UI screen layout** (240x240):
