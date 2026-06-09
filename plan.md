@@ -4,6 +4,22 @@
 
 ---
 
+## Progress
+
+| Phase | Status | Description |
+|-------|--------|-------------|
+| 1 | ✅ | Project scaffolding & ST7789 display driver |
+| 2 | ✅ | Pet state management (stats, NVS, mood, tick timer) |
+| 3 | ✅ | Button input + Xbox BLE controller |
+| 4 | ✅ | Pixel art sprites & UI rendering (speech bubble, stat bars, gamepad debug) |
+| 5 | ⬜ | WiFi & DeepSeek AI client |
+| 6 | ⬜ | Game loop — integration & polish |
+| 7 | ⬜ | Settings menu, sound, deep sleep |
+
+**Current binary**: `esp-pet.bin` ~640KB (79% free in 3MB factory partition).
+
+---
+
 ## Architecture Overview
 
 ```
@@ -57,27 +73,37 @@
 4. **Create framebuffer abstraction** — a `display.c/h` module with `display_init()`, `display_fill_rect()`, `display_draw_sprite()`, `display_draw_text()`, `display_flush()` using `esp_lcd_panel_draw_bitmap()`.
 5. **Test with a simple test pattern** — fill screen with color, draw rectangles, verify display works.
 
-### Phase 2: Pet State Management
-*Depends on Phase 1 (needs display for debug), can partially parallel with Phase 3.*
+### Phase 2: Pet State Management ✅
 
-1. **Define pet data structures** in `pet_state.h`:
-   - `pet_stats_t`: hunger (0-100), happiness (0-100), energy (0-100), age, mood enum
-   - `pet_context_t`: wraps stats + name + personality description for AI
-2. **Implement stat decay timer** — use `esp_timer` to tick stats every N seconds (hunger -1, happiness -1, energy -1 when awake). Stats bottom out at 0.
-3. **Implement care actions** — `pet_feed()`, `pet_play()`, `pet_sleep()` that boost respective stats. Each has cooldown to prevent spam.
-4. **Implement mood calculation** — derive mood (happy, neutral, sad, hungry, sleepy) from stat thresholds.
-5. **Save/load state to NVS** — persist pet stats on change (debounced), restore on boot. Store pet name and personality too.
+*Implemented in `main/pet/pet_state.c/h`.*
 
-### Phase 3: Button Input Handling
-*Parallel with Phase 2.*
+- **Stats**: `pet_stats_t` — hunger, happiness, energy (0–100 each) + age_ticks
+- **Decay**: `esp_timer` every 10s — awake (all -1), sleeping (energy +3, hunger -2, happiness -1)
+- **Care actions**: `pet_feed()`, `pet_play()`, `pet_sleep()` — boost stats, 3s cooldown each
+- **Mood**: `pet_mood_t` enum (HAPPY/NEUTRAL/SAD/HUNGRY/SLEEPY), auto-derived from stat thresholds
+- **Persistence**: NVS namespace `"pet"`, auto-save every 60s if dirty, restore on `pet_init()`
+- **Personality**: name (`"Pippy"` default), personality string, `pet_build_context_str()` for AI context
 
-1. **Configure GPIO interrupts** for both buttons with internal pull-ups, debounce with a 200ms software debounce timer.
-2. **Implement short-press / long-press detection** — short press = primary action, long press (2s) = secondary action or menu.
-3. **Button A (Action) behavior** — short press cycles through: Feed → Play → Sleep → (back to idle). Each triggers corresponding `pet_*()` function.
-4. **Button B (Talk) behavior** — short press triggers AI conversation with current pet context. Long press enters settings menu (WiFi config, pet name).
+### Phase 3: Button Input Handling ✅
 
-### Phase 4: WiFi & DeepSeek AI Client
-*Depends on Phase 2 (needs pet context). Parallel with Phase 3.*
+*Implemented in `main/buttons.c/h` + `main/gamepad/`.*
+
+- **Physical buttons**: GPIO14 (Action), GPIO15 (Talk), internal pull-ups, software debounce
+- **Xbox BLE controller**: NimBLE central, GATT HID client, parses HID reports for buttons + axes + triggers
+- **Virtual controller**: `controller.c/h` abstraction layer — unified API for physical buttons + gamepad
+- Button A → cycles Feed/Play/Sleep via D-Pad L/R, triggers Action on A press. Button B → Talk.
+
+### Phase 4: Pixel Art & UI Rendering ✅
+
+*Implemented in `main/pet/pet_sprite.c/h` + `main/ui/ui.c/h`.*
+
+- **Pixel sprite** (`pet_sprite.c`): 48×48 procedural pixel art, 2 idle frames (bob + ear change) + 1 sleep frame (closed eyes, zZz), mood-based colors, 500ms animation via `esp_timer`
+- **UI layout** (`ui.c`): Title bar, mood label (color-coded), hint bar, compact stat bars (Hunger/Happy/Energy with fill), gamepad debug overlay, rainbow gradient
+- **Speech bubble**: Rounded-rect overlay, 6×8 font text wrapping, 8s auto-dismiss, toggle via Talk button
+- **main.c**: Slimmed to ~130 lines — wiring only: input polling → actions → delegate to ui/pet_sprite modules
+
+### Phase 5: WiFi & DeepSeek AI Client ⬜
+*Next up. Depends on Phase 2 (pet context), Phase 4 (speech bubble ready).*
 
 1. **Implement WiFi manager** — connect to stored SSID/password from NVS. Show connection status on display. Auto-reconnect on disconnect.
 2. **Implement DeepSeek API client** in `ai_client.c`:
@@ -89,22 +115,8 @@
 3. **Implement response caching** — store last few AI responses so repeated "talk" presses don't always call API (saves tokens).
 4. **Store API key in NVS** — read DeepSeek API key from NVS, with a default placeholder for development.
 
-### Phase 5: Pixel Art & UI Rendering
-*Depends on Phase 1 (display), Phase 2 (pet state), Phase 4 (AI responses).*
-
-1. **Create pixel art sprites** — define pet sprite as a `const uint16_t[]` bitmap array (e.g., 48x48 pixels). Create multiple frames for idle animation, plus mood variants (happy, sad, hungry).
-2. **Implement sprite rendering** — `display_draw_sprite(x, y, width, height, data)` that copies pixel data to framebuffer.
-3. **Implement simple idle animation** — cycle through 2-3 sprite frames every ~500ms using timer.
-4. **Build main UI screen layout** (240x240):
-   - Top 16px: Status bar (pet name, WiFi icon)
-   - Center 120px: Pet sprite + animation area
-   - Below pet: Mood icon/emoji
-   - Bottom 40px: Stat bars (hunger, happiness, energy as horizontal bars)
-5. **Build speech bubble overlay** — when AI responds, overlay a rounded-rect speech bubble with text. Auto-dismiss after 8 seconds or on button press.
-6. **Implement text wrapping** — for AI responses, wrap text to fit within speech bubble width. Use a simple 8x8 or 6x8 bitmap font.
-
-### Phase 6: Game Loop & Integration
-*Depends on all prior phases.*
+### Phase 6: Game Loop & Integration ⬜
+*Partially done — main.c wiring complete. Depends on Phase 5 (AI client).*
 
 1. **Implement main loop** in `main.c` — using FreeRTOS tasks:
    - `display_task`: renders UI at ~30fps, handles animation
@@ -123,35 +135,39 @@
 
 ---
 
-## Relevant Files (to be created)
+## Relevant Files
 
-| File | Purpose |
-|------|---------|
-| `CMakeLists.txt` | Top-level project CMake |
-| `sdkconfig.defaults` | Default Kconfig overrides |
-| `main/CMakeLists.txt` | Main component CMake |
-| `main/main.c` | Entry point, FreeRTOS tasks, game loop |
-| `main/display.h` / `display.c` | ST7789 driver + framebuffer + drawing primitives |
-| `main/pet_state.h` / `pet_state.c` | Pet stats, decay logic, mood, NVS persistence |
-| `main/buttons.h` / `buttons.c` | GPIO interrupt handling, debounce, long/short press |
-| `main/wifi_handler.h` / `wifi_handler.c` | WiFi connect/reconnect, NVS credential storage |
-| `main/ai_client.h` / `ai_client.c` | DeepSeek API HTTP client, JSON build/parse |
-| `main/sprites.h` / `sprites.c` | Pixel art sprite data (bitmap arrays) |
-| `main/ui.h` / `ui.c` | UI layout, stat bars, speech bubble, animation |
-| `main/font.h` / `font.c` | 6x8 or 8x8 bitmap font for text rendering |
+| File | Status | Purpose |
+|------|--------|---------|
+| `CMakeLists.txt` | ✅ | Top-level project CMake |
+| `sdkconfig.defaults` | ✅ | Default Kconfig overrides |
+| `main/CMakeLists.txt` | ✅ | Main component CMake (all modules registered) |
+| `main/main.c` | ✅ | Entry point, display task, input wiring (~130 lines) |
+| `main/display/display.h/c` | ✅ | ST7789 driver + SPI framebuffer |
+| `main/display/graphics.h/c` | ✅ | RGB565 draw primitives (pixel, rect, text, sprites, rainbow) |
+| `main/display/font.h/c` | ✅ | 6×8 bitmap font |
+| `main/pet/pet_state.h/c` | ✅ | Stats, NVS, mood, tick timer, personality/context |
+| `main/pet/pet_sprite.h/c` | ✅ | Pixel art sprites (48×48, 2 idle + 1 sleep), mood coloring, animation |
+| `main/ui/ui.h/c` | ✅ | Layout zones, stat bars, gamepad debug, speech bubble |
+| `main/buttons.h/c` | ✅ | GPIO handling, debounce |
+| `main/gamepad/controller.h/c` | ✅ | Xbox virtual controller abstraction |
+| `main/gamepad/xbox_ble.h/c` | ✅ | NimBLE Xbox GATT client |
+| `main/gamepad/xbox_hid.h/c` | ✅ | HID report parser |
+| `main/wifi_handler.h/c` | ⬜ | WiFi connect/reconnect, credential storage |
+| `main/ai_client.h/c` | ⬜ | DeepSeek API HTTP client, JSON parsing |
 
 ---
 
 ## Verification
 
-1. **Display test**: Flash Phase 1, verify ST7789 shows test pattern (colored rectangles, text "Hello")
-2. **Pet state test**: Via serial monitor, verify stats decay every 10s, feeding/playing adjusts stats, mood changes at thresholds
-3. **Button test**: Verify short press triggers correct action, long press triggers menu, debounce works (no double-fires)
-4. **WiFi test**: Flash with WiFi credentials in NVS, verify connection, verify auto-reconnect after AP reboot
-5. **AI test**: Press Talk button, verify DeepSeek API call succeeds, response displays in speech bubble, fallback message shows when offline
-6. **Integration test**: Run full loop — pet animates, stats decay, feed pet, talk to pet, AI responds in character, speech bubble appears and dismisses
-7. **Persistence test**: Reboot device, verify pet stats and name restore from NVS
-8. **Long-run test**: Let pet run for 1+ hour, verify no memory leaks, stats don't overflow, WiFi stays connected
+1. ✅ **Display test**: ST7789 shows test pattern, backlight works
+2. ✅ **Pet state test**: Stats decay every 10s, care actions adjust stats, mood changes at thresholds, NVS persists across reboot
+3. ✅ **Button test**: Short press triggers correct action, debounce works, Xbox controller connects via BLE and maps buttons correctly
+4. ⬜ **WiFi test**: Flash with WiFi credentials in NVS, verify connection, verify auto-reconnect after AP reboot
+5. ⬜ **AI test**: Press Talk button, verify DeepSeek API call succeeds, response displays in speech bubble, fallback message shows when offline
+6. ⬜ **Integration test**: Run full loop — pet animates, stats decay, feed pet, talk to pet, AI responds in character, speech bubble appears and dismisses
+7. ⬜ **Persistence test**: Reboot device, verify pet stats and name restore from NVS (basic restore already verified)
+8. ⬜ **Long-run test**: Let pet run for 1+ hour, verify no memory leaks, stats don't overflow, WiFi stays connected
 
 ---
 

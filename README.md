@@ -28,25 +28,15 @@ A Tamagotchi-style AI virtual pet for the ESP32-C6, featuring an ST7789 240×240
 
 | Input              | Action                    |
 |-------------------|---------------------------|
-| BTN_L / Xbox A    | Cycle expressions (Happy → Neutral → Sad → Surprised) |
-| BTN_R / Xbox B    | Pick random expression   |
-| Xbox D-pad        | (reserved for navigation) |
+| BTN_L / Xbox A    | Execute current care action (Feed / Play / Sleep) |
+| BTN_R / Xbox B    | Talk — toggle speech bubble |
+| Xbox D-pad L/R    | Cycle care action         |
 
 ### Pairing the Xbox Controller
 
 1. Put the controller in pairing mode (hold the **pair button** on top until the Xbox logo flashes rapidly)
 2. The ESP32-C6 will auto-detect and connect — the status line shows `Ctrl: connected`
 3. If connection fails, press Reset on the ESP32-C6 and re-pair
-
-## Status
-
-- [x] Phase 1: Project scaffolding & display driver
-- [x] Physical buttons + BLE Xbox controller input
-- [ ] Phase 2: Pet state management
-- [ ] Phase 3: WiFi & DeepSeek API client
-- [ ] Phase 4: Pixel art sprites & UI rendering
-- [ ] Phase 5: Game loop & integration
-- [ ] Phase 6: Polish & configuration
 
 ## Tech Stack
 
