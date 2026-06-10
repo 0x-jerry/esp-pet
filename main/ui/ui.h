@@ -38,11 +38,6 @@
  */
 void ui_init(gfx_disp_t *disp);
 
-/* ── Static UI ────────────────────────────────────────────── */
-
-/** Populate static text/elements (title, hints, rainbow bar). */
-void ui_draw_static(void);
-
 /* ── Dynamic UI updates ──────────────────────────────────── */
 
 /** Update stat bar widths from current values. */

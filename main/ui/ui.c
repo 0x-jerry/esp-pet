@@ -52,6 +52,21 @@ static gfx_obj_t *w_bubble_text;
 static uint16_t  *g_bubble_buf;
 static gfx_image_dsc_t g_bubble_dsc;
 
+/* ── Static draw ──────────────────────────────────────────────── */
+
+void ui_draw_static(void) {
+    char title[48];
+    snprintf(title, sizeof(title), "ESP-PET — %s", pet_get_name());
+    gfx_label_set_text(w_title, title);
+
+    gfx_label_set_text(w_hint,
+        "A:action B:talk L/R:cycle");
+
+    gfx_label_set_text(w_ctrl, "Ctrl: searching...");
+    gfx_label_set_color(w_ctrl, GFX_COLOR_GRAY);
+}
+
+
 /* ── Initialization ───────────────────────────────────────────── */
 
 void ui_init(gfx_disp_t *disp) {
@@ -172,20 +187,8 @@ void ui_init(gfx_disp_t *disp) {
     gfx_obj_set_visible(w_bubble_text, false);
 
     ESP_LOGI(TAG, "UI widgets created");
-}
 
-/* ── Static draw ──────────────────────────────────────────────── */
-
-void ui_draw_static(void) {
-    char title[48];
-    snprintf(title, sizeof(title), "ESP-PET  — %s", pet_get_name());
-    gfx_label_set_text(w_title, title);
-
-    gfx_label_set_text(w_hint,
-        "Btn/A:action  B:talk  D-Pad L/R:cycle");
-
-    gfx_label_set_text(w_ctrl, "Ctrl: searching...");
-    gfx_label_set_color(w_ctrl, GFX_COLOR_GRAY);
+    ui_draw_static();
 }
 
 /* ── Stat bars ────────────────────────────────────────────────── */

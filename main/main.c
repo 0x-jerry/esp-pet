@@ -90,9 +90,6 @@ static void game_tick(TimerHandle_t timer) {
         ui_update_gamepad_debug(&gs);
     }
 
-    /* ── Static UI (title, hints, ctrl status) ────────── */
-    ui_draw_static();
-
     /* ── Speech bubble ────────────────────────────────── */
     ui_speech_render();
 }
