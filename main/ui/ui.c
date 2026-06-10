@@ -93,12 +93,12 @@ void ui_init(gfx_disp_t *disp) {
     /* -- rainbow gradient bar -- */
     int rw = 240, rh = UI_GRAD_H;
     uint16_t *rbuf = calloc(1, rw * rh * 2);
-    if (rbuf) {
+    gfx_image_dsc_t *rdsc = calloc(1, sizeof(gfx_image_dsc_t));
+    if (rbuf && rdsc) {
         gfx_buf_rainbow_h(rbuf, rw, rh);
-        gfx_image_dsc_t rdsc;
-        gfx_init_dsc(&rdsc, rbuf, rw, rh);
+        gfx_init_dsc(rdsc, rbuf, rw, rh);
         w_rainbow = gfx_img_create(disp);
-        gfx_img_set_src(w_rainbow, (void *)&rdsc);
+        gfx_img_set_src(w_rainbow, (void *)rdsc);
         gfx_obj_set_pos(w_rainbow, 0, UI_GRAD_Y);
     }
 

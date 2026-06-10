@@ -119,11 +119,12 @@ gfx_obj_t *gfx_make_rect_img(gfx_disp_t *disp, int x, int y,
                               uint16_t **out_buf) {
     uint16_t *buf = calloc(1, w * h * 2);
     if (!buf) return NULL;
-    gfx_image_dsc_t dsc;
-    gfx_make_solid_dsc(&dsc, buf, w, h, color);
+    gfx_image_dsc_t *dsc = calloc(1, sizeof(gfx_image_dsc_t));
+    if (!dsc) { free(buf); return NULL; }
+    gfx_make_solid_dsc(dsc, buf, w, h, color);
     gfx_obj_t *img = gfx_img_create(disp);
-    if (!img) { free(buf); return NULL; }
-    gfx_img_set_src(img, (void *)&dsc);
+    if (!img) { free(buf); free(dsc); return NULL; }
+    gfx_img_set_src(img, (void *)dsc);
     gfx_obj_set_pos(img, x, y);
     if (out_buf) *out_buf = buf;
     return img;
