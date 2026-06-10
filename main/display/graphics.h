@@ -56,3 +56,10 @@ int graphics_draw_text(int16_t x, int16_t y, const char *text, uint16_t color, u
  * Cycles through all hues left-to-right to test colour reproduction.
  */
 void graphics_draw_rainbow_h(int16_t x, int16_t y, int16_t w, int16_t h);
+
+/**
+ * Draw a filled rounded rectangle with a 1-pixel border.
+ * Uses a circle approximation for the corners (radius = 6).
+ */
+void graphics_draw_rounded_rect(int16_t x, int16_t y, int16_t w, int16_t h,
+                                uint16_t bg, uint16_t border);

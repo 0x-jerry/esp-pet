@@ -142,40 +142,6 @@ void ui_draw_ctrl_status(bool connected) {
 
 /* ── Speech bubble rendering ──────────────────────────────── */
 
-static void draw_bubble_rounded_rect(int16_t x, int16_t y, int16_t w, int16_t h,
-                                      uint16_t bg, uint16_t border) {
-    int16_t r = 6;
-    /* fill body */
-    if (h > 2 * r) {
-        graphics_fill_rect(x, y + r, w, h - 2 * r, bg);
-    }
-    if (w > 2 * r) {
-        graphics_fill_rect(x + r, y, w - 2 * r, h, bg);
-    }
-    /* fill corner quadrants (approximate with circles) */
-    for (int16_t dy = 0; dy <= r; dy++) {
-        int dx_max = 0;
-        for (int dx = r; dx >= 0; dx--) {
-            if (dx * dx + dy * dy <= r * r) { dx_max = dx; break; }
-        }
-        if (dx_max > 0) {
-            /* top-left */
-            graphics_fill_rect(x + r - dx_max, y + r - dy, dx_max, 1, bg);
-            /* top-right */
-            graphics_fill_rect(x + w - r, y + r - dy, dx_max, 1, bg);
-            /* bottom-left */
-            graphics_fill_rect(x + r - dx_max, y + h - r + dy - 1, dx_max, 1, bg);
-            /* bottom-right */
-            graphics_fill_rect(x + w - r, y + h - r + dy - 1, dx_max, 1, bg);
-        }
-    }
-    /* simple border via thin lines */
-    graphics_fill_rect(x, y + r, 1, h - 2 * r, border);
-    graphics_fill_rect(x + w - 1, y + r, 1, h - 2 * r, border);
-    graphics_fill_rect(x + r, y, w - 2 * r, 1, border);
-    graphics_fill_rect(x + r, y + h - 1, w - 2 * r, 1, border);
-}
-
 /**
  * Render the speech bubble overlay. Called each frame by display task.
  * Redraws the bubble and wrapped text.
@@ -212,7 +178,7 @@ void ui_speech_render(void) {
     if (bh > UI_BUBBLE_MAX_H) bh = UI_BUBBLE_MAX_H;
 
     /* draw background + border */
-    draw_bubble_rounded_rect(bx, by, bw, bh, COLOR(40, 40, 50), COLOR_WHITE);
+    graphics_draw_rounded_rect(bx, by, bw, bh, COLOR(40, 40, 50), COLOR_WHITE);
 
     /* draw text */
     graphics_draw_text(bx + 8, by + 7, text, COLOR_WHITE,
