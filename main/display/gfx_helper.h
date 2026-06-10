@@ -13,6 +13,8 @@
 
 /* ── Common RGB565 colour constants ───────────────────────────── */
 
+extern const gfx_color_t GFX_COLOR_BLACK;
+
 extern const gfx_color_t GFX_COLOR_WHITE;
 extern const gfx_color_t GFX_COLOR_RED;
 extern const gfx_color_t GFX_COLOR_GREEN;
@@ -29,6 +31,18 @@ void gfx_buf_fill(uint16_t *buf, int w, int h, uint16_t color);
 
 /** Fill a uint16_t pixel buffer with a horizontal rainbow gradient. */
 void gfx_buf_rainbow_h(uint16_t *buf, int w, int h);
+
+/** Draw a filled circle into a pixel buffer. */
+void gfx_buf_circle(uint16_t *buf, int w, int h,
+                    int cx, int cy, int r, uint16_t color);
+
+/** Draw a filled ellipse into a pixel buffer. */
+void gfx_buf_ellipse(uint16_t *buf, int w, int h,
+                     int cx, int cy, int rx, int ry, uint16_t color);
+
+/** Draw a filled axis-aligned rectangle into a pixel buffer. */
+void gfx_buf_rect(uint16_t *buf, int w, int h,
+                  int x, int y, int rw, int rh, uint16_t color);
 
 /** Initialize a gfx_image_dsc_t for a pre-filled pixel buffer.
  *  Zeroes the descriptor then sets header magic / cf / w / h / stride /

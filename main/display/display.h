@@ -4,6 +4,10 @@
 #include <stdbool.h>
 #include "esp_lcd_panel_ops.h"
 
+/** Pack 8-bit R/G/B into a uint16_t RGB565 pixel. */
+#define RGB565(r, g, b) \
+    ((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3))
+
 // Display dimensions
 #define DISPLAY_WIDTH  240
 #define DISPLAY_HEIGHT 240

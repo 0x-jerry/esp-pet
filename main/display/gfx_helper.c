@@ -9,6 +9,7 @@
 
 /* ── Colour constants ─────────────────────────────────────────── */
 
+const gfx_color_t GFX_COLOR_BLACK     = { .full = 0x0000 };
 const gfx_color_t GFX_COLOR_WHITE      = { .full = 0xFFFF };
 const gfx_color_t GFX_COLOR_RED        = { .full = 0xF800 };
 const gfx_color_t GFX_COLOR_GREEN      = { .full = 0x07E0 };
@@ -46,6 +47,49 @@ void gfx_buf_rainbow_h(uint16_t *buf, int w, int h) {
         }
         uint16_t c = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
         for (int y = 0; y < h; y++) buf[y * w + x] = c;
+    }
+}
+
+/* ── Drawing primitives ──────────────────────────────────────── */
+
+void gfx_buf_circle(uint16_t *buf, int w, int h,
+                    int cx, int cy, int r, uint16_t color) {
+    for (int dy = -r; dy <= r; dy++) {
+        for (int dx = -r; dx <= r; dx++) {
+            if (dx * dx + dy * dy <= r * r) {
+                int px = cx + dx, py = cy + dy;
+                if (px >= 0 && px < w && py >= 0 && py < h) {
+                    buf[py * w + px] = color;
+                }
+            }
+        }
+    }
+}
+
+void gfx_buf_ellipse(uint16_t *buf, int w, int h,
+                     int cx, int cy, int rx, int ry, uint16_t color) {
+    for (int dy = -ry; dy <= ry; dy++) {
+        for (int dx = -rx; dx <= rx; dx++) {
+            if (dx * dx * ry * ry + dy * dy * rx * rx
+                <= rx * rx * ry * ry) {
+                int px = cx + dx, py = cy + dy;
+                if (px >= 0 && px < w && py >= 0 && py < h) {
+                    buf[py * w + px] = color;
+                }
+            }
+        }
+    }
+}
+
+void gfx_buf_rect(uint16_t *buf, int w, int h,
+                  int x, int y, int rw, int rh, uint16_t color) {
+    for (int row = 0; row < rh; row++) {
+        for (int col = 0; col < rw; col++) {
+            int px = x + col, py = y + row;
+            if (px >= 0 && px < w && py >= 0 && py < h) {
+                buf[py * w + px] = color;
+            }
+        }
     }
 }
 
