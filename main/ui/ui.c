@@ -161,8 +161,12 @@ static void draw_bubble_rounded_rect(int16_t x, int16_t y, int16_t w, int16_t h,
         if (dx_max > 0) {
             /* top-left */
             graphics_fill_rect(x + r - dx_max, y + r - dy, dx_max, 1, bg);
+            /* top-right */
+            graphics_fill_rect(x + w - r, y + r - dy, dx_max, 1, bg);
             /* bottom-left */
             graphics_fill_rect(x + r - dx_max, y + h - r + dy - 1, dx_max, 1, bg);
+            /* bottom-right */
+            graphics_fill_rect(x + w - r, y + h - r + dy - 1, dx_max, 1, bg);
         }
     }
     /* simple border via thin lines */
