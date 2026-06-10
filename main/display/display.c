@@ -1,3 +1,11 @@
+/**
+ * @file display.c
+ * @brief ST7789 hardware initialization for ESP32-C6.
+ *
+ * Initializes SPI bus, LCD panel, and backlight PWM.
+ * Framebuffer management is handled by esp_emote_gfx.
+ */
+
 #include "display.h"
 
 #include "esp_lcd_panel_io.h"
@@ -5,12 +13,7 @@
 #include "esp_lcd_panel_st7789.h"
 #include "driver/spi_master.h"
 #include "driver/ledc.h"
-#include "driver/gpio.h"
-#include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include <string.h>
 
 static const char *TAG = "display";
 
@@ -31,20 +34,6 @@ static const char *TAG = "display";
 static esp_lcd_panel_io_handle_t io_handle = NULL;
 static esp_lcd_panel_handle_t panel_handle = NULL;
 
-// Framebuffer
-static uint16_t *framebuffer = NULL;
-
-// Strip height for flush (1/10 of display → ~11 KiB swap buffer)
-#define FLUSH_STRIP_H (DISPLAY_HEIGHT / 10)
-
-// DMA-safe swap buffer (allocated once in display_init)
-static uint16_t *swap_buf = NULL;
-
-// Skips flush when nothing changed
-static bool dirty = false;
-
-void display_mark_dirty(void) { dirty = true; }
-
 // --- Backlight ---
 
 void display_set_backlight(uint8_t percent) {
@@ -52,6 +41,12 @@ void display_set_backlight(uint8_t percent) {
     uint32_t duty = (uint32_t)(percent * 255 / 100);
     ledc_set_duty(LEDC_MODE, LEDC_CH, duty);
     ledc_update_duty(LEDC_MODE, LEDC_CH);
+}
+
+// --- Panel handle accessor ---
+
+esp_lcd_panel_handle_t display_get_panel_handle(void) {
+    return panel_handle;
 }
 
 // --- Initialization ---
@@ -128,53 +123,5 @@ void display_init(void) {
     // Turn on display
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
 
-    // Allocate framebuffer & swap buffer
-    size_t fb_size = DISPLAY_WIDTH * DISPLAY_HEIGHT * sizeof(uint16_t);
-    framebuffer = heap_caps_malloc(fb_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (framebuffer == NULL) {
-        framebuffer = heap_caps_malloc(fb_size, MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
-    }
-    if (framebuffer == NULL) {
-        framebuffer = malloc(fb_size);
-    }
-    assert(framebuffer != NULL);
-    memset(framebuffer, 0, fb_size);
-
-    swap_buf = spi_bus_dma_memory_alloc(LCD_HOST,
-                          DISPLAY_WIDTH * FLUSH_STRIP_H * sizeof(uint16_t), 0);
-    assert(swap_buf != NULL);
-
-    ESP_LOGI(TAG, "Display initialized. FB at %p, size %zu", framebuffer, fb_size);
-}
-
-uint16_t *display_get_framebuffer(void) {
-    return framebuffer;
-}
-
-
-// --- Flush to Display ---
-
-void display_flush(void) {
-    if (!dirty) return;
-
-    // Stream framebuffer in strips for DMA compatibility.
-    for (int16_t y0 = 0; y0 < DISPLAY_HEIGHT; y0 += FLUSH_STRIP_H) {
-        int16_t strip_h = FLUSH_STRIP_H;
-        if (y0 + strip_h > DISPLAY_HEIGHT) strip_h = DISPLAY_HEIGHT - y0;
-
-        // Copy strip rows to DMA-safe swap buffer
-        size_t strip_pixels = (size_t)DISPLAY_WIDTH * strip_h;
-        const uint16_t *src = &framebuffer[y0 * DISPLAY_WIDTH];
-        for (size_t i = 0; i < strip_pixels; i++) {
-            swap_buf[i] = src[i];
-        }
-
-        ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(panel_handle,
-                          0, y0, DISPLAY_WIDTH, y0 + strip_h, swap_buf));
-        
-        // Wait a bit to avoid flooding the LCD with too many commands at once.
-        vTaskDelay(pdMS_TO_TICKS(5));
-    }
-
-    dirty = false;
+    ESP_LOGI(TAG, "Display initialized");
 }

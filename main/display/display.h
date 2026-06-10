@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "esp_lcd_panel_ops.h"
 
 // Display dimensions
 #define DISPLAY_WIDTH  240
@@ -16,30 +17,18 @@
 #define TFT_SCLK 6
 
 /**
- * Initialize the ST7789 display and allocate framebuffer.
+ * Initialize the ST7789 display hardware (SPI, panel, backlight).
  * Must be called once before any other display functions.
+ * Does NOT allocate a framebuffer — esp_emote_gfx manages that.
  */
 void display_init(void);
 
 /**
- * Flush the framebuffer to the physical display via SPI.
- * Only the dirty region is sent (partial update).
+ * Get the ESP LCD panel handle for use with esp_emote_gfx flush callback.
  */
-void display_flush(void);
+esp_lcd_panel_handle_t display_get_panel_handle(void);
 
 /**
  * Set the backlight brightness (0-100).
  */
 void display_set_backlight(uint8_t percent);
-
-/**
- * Get a pointer to the framebuffer for direct manipulation.
- * Size is DISPLAY_WIDTH * DISPLAY_HEIGHT pixels (2 bytes each).
- */
-uint16_t *display_get_framebuffer(void);
-
-/**
- * Mark the framebuffer as dirty, ensuring the next flush() sends the update.
- * Called automatically by the graphics_* drawing functions.
- */
-void display_mark_dirty(void);
