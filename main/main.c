@@ -20,7 +20,6 @@ static const char *TAG = "main";
 
 /* ── Display task: render loop ────────────────────────────────── */
 static void display_task(void *param) {
-    ui_draw_static();
 
     pet_mood_t last_mood = PET_MOOD_COUNT;
     pet_stats_t last_stats = { -1, -1, -1, 0 };
@@ -28,6 +27,9 @@ static void display_task(void *param) {
     bool last_sleep = false;
 
     while (1) {
+        graphics_fill(COLOR_BLACK);
+
+        ui_draw_static();
         controller_poll();
 
         /* ── Input: Action button → current care ──────────── */

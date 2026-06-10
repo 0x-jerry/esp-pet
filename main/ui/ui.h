@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include "pet/pet_state.h"
 #include "gamepad/controller.h"
+#include "ui_state.h"
 
 /* ── Layout constants ─────────────────────────────────────── */
 #define UI_TITLE_Y       8
@@ -23,16 +24,11 @@
 #define UI_PET_X  96    /* left edge: 96 = center of 48-wide sprite at 120 */
 #define UI_PET_Y  72    /* top edge */
 
-/** Speech bubble dimensions. */
+/** Speech bubble rendering dimensions. */
 #define UI_BUBBLE_X  10
 #define UI_BUBBLE_Y  60
 #define UI_BUBBLE_W  220
 #define UI_BUBBLE_MAX_H 140
-#define UI_BUBBLE_TIMEOUT_MS 8000
-
-/* ── Care action index (shared with main) ─────────────────── */
-extern int ui_care_index;
-extern const char *ui_care_names[3];
 
 /* ── Static UI ────────────────────────────────────────────── */
 
@@ -55,25 +51,6 @@ void ui_draw_ctrl_status(bool connected);
 
 /** Clear the gamepad debug area (on disconnect). */
 void ui_clear_gamepad_debug(void);
-
-/* ── Speech bubble ────────────────────────────────────────── */
-
-/**
- * Show a speech bubble with the given text.
- * Auto-dismisses after UI_BUBBLE_TIMEOUT_MS.
- * Calling again replaces the current bubble.
- */
-void ui_speech_show(const char *text);
-
-/**
- * Dismiss the speech bubble immediately.
- */
-void ui_speech_dismiss(void);
-
-/**
- * Check if speech bubble is currently visible.
- */
-bool ui_speech_visible(void);
 
 /**
  * Render the speech bubble overlay (called each frame).

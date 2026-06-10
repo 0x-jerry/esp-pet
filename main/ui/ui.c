@@ -1,36 +1,11 @@
 #include "ui.h"
 #include "graphics.h"
-#include "esp_timer.h"
-#include "esp_timer.h"
-#include "esp_log.h"
 #include <string.h>
 #include <stdio.h>
-
-static const char *TAG = "ui";
-
-/* ── Shared care state ────────────────────────────────────── */
-int ui_care_index = 0;
-const char *ui_care_names[3] = { "Feed", "Play", "Sleep" };
-
-/* ── Mood labels ──────────────────────────────────────────── */
-static const char *mood_labels[] = {
-    [PET_MOOD_HAPPY]  = "Happy",
-    [PET_MOOD_NEUTRAL] = "Neutral",
-    [PET_MOOD_SAD]    = "Sad",
-    [PET_MOOD_HUNGRY] = "Hungry",
-    [PET_MOOD_SLEEPY] = "Sleepy",
-};
-
-/* ── Speech bubble state ──────────────────────────────────── */
-static char         g_bubble_text[512];
-static bool         g_bubble_visible;
-static int64_t      g_bubble_shown_ms;
-static esp_timer_handle_t g_bubble_timer;
 
 /* ── Static UI ────────────────────────────────────────────── */
 
 void ui_draw_static(void) {
-    graphics_fill(COLOR_BLACK);
 
     /* title + name */
     char title[48];
@@ -94,7 +69,7 @@ void ui_draw_stat_bars(const pet_stats_t *stats) {
 void ui_draw_mood_label(pet_mood_t mood, bool sleeping) {
     graphics_fill_rect(65, UI_MOOD_Y, 140, UI_MOOD_H, COLOR_DARK_GRAY);
 
-    const char *label = sleeping ? "Sleeping" : mood_labels[mood];
+    const char *label = sleeping ? "Sleeping" : ui_mood_label_text(mood);
     uint16_t lc = sleeping ? COLOR_CYAN :
                   (mood == PET_MOOD_HUNGRY ? COLOR_RED :
                    mood == PET_MOOD_SAD ? COLOR_BLUE : COLOR_YELLOW);
@@ -165,7 +140,7 @@ void ui_draw_ctrl_status(bool connected) {
         connected ? COLOR_GREEN : COLOR_GRAY, COLOR_BLACK, 0);
 }
 
-/* ── Speech bubble ────────────────────────────────────────── */
+/* ── Speech bubble rendering ──────────────────────────────── */
 
 static void draw_bubble_rounded_rect(int16_t x, int16_t y, int16_t w, int16_t h,
                                       uint16_t bg, uint16_t border) {
@@ -197,53 +172,12 @@ static void draw_bubble_rounded_rect(int16_t x, int16_t y, int16_t w, int16_t h,
     graphics_fill_rect(x + r, y + h - 1, w - 2 * r, 1, border);
 }
 
-/* bubble auto-dismiss callback */
-static void bubble_timeout_cb(void *arg) {
-    ui_speech_dismiss();
-}
-
-void ui_speech_show(const char *text) {
-    strncpy(g_bubble_text, text, sizeof(g_bubble_text) - 1);
-    g_bubble_text[sizeof(g_bubble_text) - 1] = '\0';
-    g_bubble_visible = true;
-    g_bubble_shown_ms = esp_timer_get_time() / 1000;
-
-    /* start/restart dismiss timer */
-    if (g_bubble_timer) {
-        esp_timer_stop(g_bubble_timer);
-        esp_timer_delete(g_bubble_timer);
-        g_bubble_timer = NULL;
-    }
-
-    const esp_timer_create_args_t args = {
-        .callback = bubble_timeout_cb,
-        .name = "bubble_timeout",
-    };
-    esp_timer_create(&args, &g_bubble_timer);
-    esp_timer_start_once(g_bubble_timer, UI_BUBBLE_TIMEOUT_MS * 1000);
-
-    ESP_LOGI(TAG, "Speech bubble shown (%d chars)", (int)strlen(text));
-}
-
-void ui_speech_dismiss(void) {
-    g_bubble_visible = false;
-    if (g_bubble_timer) {
-        esp_timer_stop(g_bubble_timer);
-        esp_timer_delete(g_bubble_timer);
-        g_bubble_timer = NULL;
-    }
-}
-
-bool ui_speech_visible(void) {
-    return g_bubble_visible;
-}
-
 /**
  * Render the speech bubble overlay. Called each frame by display task.
  * Redraws the bubble and wrapped text.
  */
 void ui_speech_render(void) {
-    if (!g_bubble_visible) return;
+    if (!ui_speech_visible()) return;
 
     int16_t bx = UI_BUBBLE_X;
     int16_t by = UI_BUBBLE_Y;
@@ -257,11 +191,12 @@ void ui_speech_render(void) {
      * and total lines ≈ len / chars_per_line.
      */
     int chars_per_line = text_w / 6; /* FONT_WIDTH=6 */
-    int len = strlen(g_bubble_text);
+    const char *text = ui_speech_text();
+    int len = strlen(text);
     int lines = 1;
     int line_chars = 0;
     for (int i = 0; i < len; i++) {
-        if (g_bubble_text[i] == '\n') {
+        if (text[i] == '\n') {
             lines++;
             line_chars = 0;
         } else {
@@ -276,6 +211,6 @@ void ui_speech_render(void) {
     draw_bubble_rounded_rect(bx, by, bw, bh, COLOR(40, 40, 50), COLOR_WHITE);
 
     /* draw text */
-    graphics_draw_text(bx + 8, by + 7, g_bubble_text, COLOR_WHITE,
+    graphics_draw_text(bx + 8, by + 7, text, COLOR_WHITE,
                        COLOR(40, 40, 50), text_w);
 }
