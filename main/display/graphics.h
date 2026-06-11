@@ -24,8 +24,9 @@
  *
  * @param buf      Pointer to the DMA-safe strip buffer.
  * @param y0       Top row of this strip in screen coordinates.
+ * @param strip_h  Height of this strip in rows.
  */
-void graphics_begin_strip(uint16_t *buf, int16_t y0);
+void graphics_begin_strip(uint16_t *buf, int16_t y0, int16_t strip_h);
 
 /**
  * End the current strip rendering context.

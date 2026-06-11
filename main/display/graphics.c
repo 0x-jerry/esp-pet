@@ -8,12 +8,10 @@ static uint16_t *g_strip_buf = NULL;
 static int16_t   g_strip_y0  = 0;
 static int16_t   g_strip_h   = 0;
 
-void graphics_begin_strip(uint16_t *buf, int16_t y0) {
+void graphics_begin_strip(uint16_t *buf, int16_t y0, int16_t strip_h) {
     g_strip_buf = buf;
     g_strip_y0  = y0;
-    // All strips are DISPLAY_STRIP_H except possibly the last one,
-    // but callers always zero a full strip, so we assume DISPLAY_STRIP_H.
-    g_strip_h   = DISPLAY_STRIP_H;
+    g_strip_h   = strip_h;
 }
 
 void graphics_end_strip(void) {
@@ -115,12 +113,13 @@ void graphics_draw_sprite_region(int16_t x, int16_t y, int16_t w, int16_t h,
     if (row_start >= row_end) return;
 
     int16_t screen_x = x + start_x;
+    int16_t px_count = end_x - start_x;
 
     for (int16_t row = row_start; row < row_end; row++) {
         int16_t src_row = row - y;
         const uint8_t *src = &map[src_row * w + start_x];
         uint16_t *dst = &g_strip_buf[(row - g_strip_y0) * DISPLAY_WIDTH + screen_x];
-        for (int16_t col = 0; col < end_x - start_x; col++) {
+        for (int16_t col = 0; col < px_count; col++) {
             uint8_t region = src[col];
             if (region != 0) {
                 dst[col] = palette[region];
@@ -142,13 +141,13 @@ int graphics_draw_char(int16_t x, int16_t y, char c, uint16_t color, uint16_t bg
     }
 
     const uint8_t *glyph = font_get_char(c);
+    int16_t strip_end = g_strip_y0 + g_strip_h;
 
     for (int16_t col = 0; col < FONT_WIDTH; col++) {
         uint8_t line = glyph[col];
         int16_t px = x + col;
         if (px < 0 || px >= DISPLAY_WIDTH) continue;
 
-        int16_t strip_end = g_strip_y0 + g_strip_h;
         for (int16_t row = 0; row < FONT_HEIGHT; row++) {
             int16_t py = y + row;
             if (py < g_strip_y0 || py >= strip_end) continue;

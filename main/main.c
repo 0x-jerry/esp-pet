@@ -1,6 +1,7 @@
 #include "buttons.h"
 #include "gamepad/controller.h"
 #include "display.h"
+#include "graphics.h"
 #include "pet/pet_state.h"
 #include "pet/pet_sprite.h"
 #include "ui/ui.h"
@@ -16,6 +17,47 @@
 #include "host/ble_hs.h"
 
 static const char *TAG = "main";
+
+/* ── Per-strip render callback ────────────────────────────────── */
+
+/**
+ * Called by display_render_frame() once per 24-row strip.
+ * Orchestrates all UI and pet rendering for the current strip.
+ */
+static void render_strip(int16_t y0, int16_t y1) {
+    (void)y0; (void)y1; /* graphics primitives clip to strip via context */
+
+    /* ── Static elements ── */
+    ui_draw_title();
+    ui_draw_mood_bg();
+    ui_draw_hints();
+    ui_draw_rainbow_bar();
+
+    /* ── Pet state ── */
+    pet_mood_t mood = pet_get_mood();
+    bool sleeping = pet_is_sleeping();
+    const pet_stats_t *stats = pet_get_stats();
+
+    /* ── Pet sprite ── */
+    pet_sprite_draw(UI_PET_X, UI_PET_Y, sleeping ? PET_MOOD_SLEEPY : mood, sleeping);
+
+    /* ── Stat bars + care hint ── */
+    ui_draw_stat_bars(stats);
+
+    /* ── Mood label ── */
+    ui_draw_mood_label(mood, sleeping);
+
+    /* ── Controller status + gamepad debug ── */
+    bool ctrl_conn = controller_is_connected();
+    ui_draw_ctrl_status(ctrl_conn);
+    if (ctrl_conn) {
+        gamepad_state_t gs = controller_get_state();
+        ui_draw_gamepad_debug(&gs);
+    }
+
+    /* ── Speech bubble overlay ── */
+    ui_speech_render();
+}
 
 /* ── Display task: render loop ────────────────────────────────── */
 static void display_task(void *param) {
@@ -57,7 +99,7 @@ static void display_task(void *param) {
         }
 
         /* ── Render frame (strip-based, all drawing in callback) ── */
-        display_render_frame(ui_render_strip);
+        display_render_frame(render_strip);
 
         vTaskDelay(pdMS_TO_TICKS(50));
     }

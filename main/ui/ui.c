@@ -1,57 +1,36 @@
 #include "ui.h"
-#include "pet/pet_sprite.h"
 #include "graphics.h"
 #include <string.h>
 #include <stdio.h>
 
-/* ── Master strip callback ────────────────────────────────── */
+/* ── Static elements ──────────────────────────────────────── */
 
-void ui_render_strip(int16_t y0, int16_t y1) {
-    (void)y1; /* y1 not needed — graphics primitives clip to strip via context */
-
-    /* ── Title + underline ── */
+void ui_draw_title(void) {
     char title[48];
     snprintf(title, sizeof(title), "ESP-PET  — %s", pet_get_name());
     graphics_draw_text(10, UI_TITLE_Y, title, COLOR_WHITE, COLOR_BLACK, 0);
     graphics_fill_rect(10, UI_UNDERLINE_Y, 220, 2, COLOR_WHITE);
+}
 
-    /* ── Mood bar background ── */
+void ui_draw_mood_bg(void) {
     graphics_fill_rect(10, UI_MOOD_Y, 220, UI_MOOD_H, COLOR_DARK_GRAY);
     graphics_draw_text(16, UI_MOOD_Y + 5, "Mood:", COLOR_WHITE, COLOR_DARK_GRAY, 0);
+}
 
-    /* ── Hints ── */
+void ui_draw_hints(void) {
     graphics_draw_text(10, UI_HINT_Y,
         "Btn/A:action  B:talk  D-Pad L/R:cycle", COLOR_GREEN, COLOR_BLACK, 0);
+}
 
-    /* ── Rainbow bar ── */
+void ui_draw_rainbow_bar(void) {
     graphics_draw_rainbow_h(0, UI_GRAD_Y, DISPLAY_WIDTH, UI_GRAD_H);
+}
 
-    /* ── Pet sprite ── */
-    pet_mood_t mood = pet_get_mood();
-    bool sleeping = pet_is_sleeping();
-    pet_sprite_draw(UI_PET_X, UI_PET_Y, sleeping ? PET_MOOD_SLEEPY : mood, sleeping);
-
-    /* ── Stat bars + care hint ── */
-    ui_draw_stat_bars(pet_get_stats());
-
-    /* ── Mood label ── */
-    ui_draw_mood_label(mood, sleeping);
-
-    /* ── Controller status ── */
-    bool ctrl_conn = controller_is_connected();
+void ui_draw_ctrl_status(bool connected) {
     graphics_fill_rect(10, UI_CTRL_Y, 220, 10, COLOR_BLACK);
     graphics_draw_text(10, UI_CTRL_Y,
-        ctrl_conn ? "Ctrl: connected" : "Ctrl: searching...",
-        ctrl_conn ? COLOR_GREEN : COLOR_GRAY, COLOR_BLACK, 0);
-
-    /* ── Gamepad debug ── */
-    if (ctrl_conn) {
-        gamepad_state_t gs = controller_get_state();
-        ui_draw_gamepad_debug(&gs);
-    }
-
-    /* ── Speech bubble overlay ── */
-    ui_speech_render();
+        connected ? "Ctrl: connected" : "Ctrl: searching...",
+        connected ? COLOR_GREEN : COLOR_GRAY, COLOR_BLACK, 0);
 }
 
 /* ── Stat bars ────────────────────────────────────────────── */

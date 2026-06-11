@@ -1,4 +1,5 @@
 #include "display.h"
+#include "graphics.h"
 
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
@@ -139,8 +140,13 @@ void display_render_frame(void (*render_cb)(int16_t y0, int16_t y1)) {
         // Zero the strip buffer (black background for this strip)
         memset(strip_buf, 0, (size_t)DISPLAY_WIDTH * strip_h * sizeof(uint16_t));
 
+        // Set strip context so all graphics_* calls target this strip
+        graphics_begin_strip(strip_buf, y0, strip_h);
+
         // Let the callback draw everything overlapping [y0, y0+strip_h)
         render_cb(y0, y0 + strip_h);
+
+        graphics_end_strip();
 
         // DMA the strip directly to the LCD (zero-copy from strip_buf)
         ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(panel_handle,

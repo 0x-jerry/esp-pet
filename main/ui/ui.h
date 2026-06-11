@@ -30,18 +30,24 @@
 #define UI_BUBBLE_W  220
 #define UI_BUBBLE_MAX_H 140
 
-/* ── Strip rendering callback ─────────────────────────────── */
+/* ── Static element renderers ─────────────────────────────── */
 
-/**
- * Master per-strip render callback for display_render_frame().
- * Draws ALL UI elements (static + dynamic) that overlap the current strip
- * [y0, y1). Called 10 times per frame (once per 24-row strip).
- *
- * This replaces the old per-frame ui_draw_static() + per-element calls.
- */
-void ui_render_strip(int16_t y0, int16_t y1);
+/** Draw title bar: "ESP-PET  — <name>" + white underline. */
+void ui_draw_title(void);
 
-/* ── Individual element renderers (still callable standalone) ─ */
+/** Draw mood bar background (dark gray rectangle + "Mood:" label). */
+void ui_draw_mood_bg(void);
+
+/** Draw hint text (button help line). */
+void ui_draw_hints(void);
+
+/** Draw the rainbow gradient bar at the bottom. */
+void ui_draw_rainbow_bar(void);
+
+/** Draw controller connection status line. */
+void ui_draw_ctrl_status(bool connected);
+
+/* ── Dynamic element renderers ────────────────────────────── */
 
 /** Redraw stat bars with current values + care hint. */
 void ui_draw_stat_bars(const pet_stats_t *stats);
