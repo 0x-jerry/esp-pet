@@ -30,12 +30,18 @@
 #define UI_BUBBLE_W  220
 #define UI_BUBBLE_MAX_H 140
 
-/* ── Static UI ────────────────────────────────────────────── */
+/* ── Strip rendering callback ─────────────────────────────── */
 
-/** Draw all static elements (title, mood bar, hints, gradient). */
-void ui_draw_static(void);
+/**
+ * Master per-strip render callback for display_render_frame().
+ * Draws ALL UI elements (static + dynamic) that overlap the current strip
+ * [y0, y1). Called 10 times per frame (once per 24-row strip).
+ *
+ * This replaces the old per-frame ui_draw_static() + per-element calls.
+ */
+void ui_render_strip(int16_t y0, int16_t y1);
 
-/* ── Dynamic UI ───────────────────────────────────────────── */
+/* ── Individual element renderers (still callable standalone) ─ */
 
 /** Redraw stat bars with current values + care hint. */
 void ui_draw_stat_bars(const pet_stats_t *stats);
@@ -45,9 +51,6 @@ void ui_draw_mood_label(pet_mood_t mood, bool sleeping);
 
 /** Draw gamepad debug overlay. */
 void ui_draw_gamepad_debug(const gamepad_state_t *gs);
-
-/** Draw controller connection status line. */
-void ui_draw_ctrl_status(bool connected);
 
 /** Clear the gamepad debug area (on disconnect). */
 void ui_clear_gamepad_debug(void);

@@ -1,75 +1,143 @@
 #include "graphics.h"
 #include "font.h"
+#include <string.h>
 
-// ── Internal helpers ──────────────────────────────────────────
+// ── Strip context (set by graphics_begin_strip) ─────────────
+
+static uint16_t *g_strip_buf = NULL;
+static int16_t   g_strip_y0  = 0;
+static int16_t   g_strip_h   = 0;
+
+void graphics_begin_strip(uint16_t *buf, int16_t y0) {
+    g_strip_buf = buf;
+    g_strip_y0  = y0;
+    // All strips are DISPLAY_STRIP_H except possibly the last one,
+    // but callers always zero a full strip, so we assume DISPLAY_STRIP_H.
+    g_strip_h   = DISPLAY_STRIP_H;
+}
+
+void graphics_end_strip(void) {
+    g_strip_buf = NULL;
+    g_strip_y0  = 0;
+    g_strip_h   = 0;
+}
+
+// ── Internal: pixel pointer in strip (or NULL if out of strip) ─
 
 static inline uint16_t *fb_pixel(int16_t x, int16_t y) {
-    uint16_t *fb = display_get_framebuffer();
-    return &fb[y * DISPLAY_WIDTH + x];
+    if (x < 0 || x >= DISPLAY_WIDTH) return NULL;
+    int16_t strip_y = y - g_strip_y0;
+    if (strip_y < 0 || strip_y >= g_strip_h) return NULL;
+    return &g_strip_buf[strip_y * DISPLAY_WIDTH + x];
 }
 
-// ── Fill ──────────────────────────────────────────────────────
-
-void graphics_fill(uint16_t color) {
-    uint16_t *fb = display_get_framebuffer();
-    size_t count = DISPLAY_WIDTH * DISPLAY_HEIGHT;
-    for (size_t i = 0; i < count; i++) {
-        fb[i] = color;
-    }
-    display_mark_dirty();
-}
-
-// ── Pixel ─────────────────────────────────────────────────────
+// ── Pixel ───────────────────────────────────────────────────
 
 void graphics_draw_pixel(int16_t x, int16_t y, uint16_t color) {
-    if (x < 0 || x >= DISPLAY_WIDTH || y < 0 || y >= DISPLAY_HEIGHT) return;
-    *fb_pixel(x, y) = color;
-    display_mark_dirty();
+    uint16_t *p = fb_pixel(x, y);
+    if (p) *p = color;
 }
 
-// ── Filled rectangle ──────────────────────────────────────────
+// ── Filled rectangle ────────────────────────────────────────
 
 void graphics_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
+    // Clip to screen
     if (x < 0) { w += x; x = 0; }
     if (y < 0) { h += y; y = 0; }
     if (x + w > DISPLAY_WIDTH)  w = DISPLAY_WIDTH - x;
     if (y + h > DISPLAY_HEIGHT) h = DISPLAY_HEIGHT - y;
     if (w <= 0 || h <= 0) return;
 
-    uint16_t *p_row = fb_pixel(x, y);
-    for (int16_t row = 0; row < h; row++) {
-        uint16_t *p = p_row;
-        for (int16_t col = 0; col < w; col++, p++) {
-            *p = color;
+    // Clip to strip
+    int16_t strip_end = g_strip_y0 + g_strip_h;
+    int16_t row_start = y;
+    if (row_start < g_strip_y0) row_start = g_strip_y0;
+    int16_t row_end = y + h;
+    if (row_end > strip_end) row_end = strip_end;
+    if (row_start >= row_end) return;
+
+    // Fill each visible row
+    int16_t strip_row0 = row_start - g_strip_y0;
+    int16_t strip_row1 = row_end - g_strip_y0;
+    for (int16_t sr = strip_row0; sr < strip_row1; sr++) {
+        uint16_t *p = &g_strip_buf[sr * DISPLAY_WIDTH + x];
+        // Manual word fill (faster than memset for odd sizes; our w is small)
+        for (int16_t col = 0; col < w; col++) {
+            p[col] = color;
         }
-        p_row += DISPLAY_WIDTH;
     }
-    display_mark_dirty();
 }
 
-// ── Sprite ────────────────────────────────────────────────────
+// ── Sprite (uint16_t data) ──────────────────────────────────
 
 void graphics_draw_sprite(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t *data) {
-    if (x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT) return;
-
+    // Clip to screen
     int16_t start_x = (x < 0) ? -x : 0;
-    int16_t start_y = (y < 0) ? -y : 0;
-    int16_t end_x = (x + w > DISPLAY_WIDTH)  ? DISPLAY_WIDTH - x : w;
-    int16_t end_y = (y + h > DISPLAY_HEIGHT) ? DISPLAY_HEIGHT - y : h;
+    int16_t end_x = w;
+    if (x + w > DISPLAY_WIDTH) end_x = DISPLAY_WIDTH - x;
+    if (x >= DISPLAY_WIDTH || end_x <= start_x) return;
 
-    for (int16_t row = start_y; row < end_y; row++) {
-        for (int16_t col = start_x; col < end_x; col++) {
-            uint16_t color = data[row * w + col];
-            *fb_pixel(x + col, y + row) = color;
-        }
+    // Clip to strip
+    int16_t strip_end = g_strip_y0 + g_strip_h;
+    int16_t row_start = y;
+    if (row_start < g_strip_y0) row_start = g_strip_y0;
+    int16_t row_end = y + h;
+    if (row_end > strip_end) row_end = strip_end;
+    if (row_start >= row_end) return;
+
+    int16_t px_count = end_x - start_x;
+    int16_t screen_x = x + start_x;
+
+    for (int16_t row = row_start; row < row_end; row++) {
+        int16_t src_row = row - y;
+        const uint16_t *src = &data[src_row * w + start_x];
+        uint16_t *dst = &g_strip_buf[(row - g_strip_y0) * DISPLAY_WIDTH + screen_x];
+        memcpy(dst, src, px_count * sizeof(uint16_t));
     }
-    display_mark_dirty();
 }
 
-// ── Text rendering ────────────────────────────────────────────
+// ── Sprite from region map + palette ────────────────────────
+
+void graphics_draw_sprite_region(int16_t x, int16_t y, int16_t w, int16_t h,
+                                 const uint8_t *map, const uint16_t *palette) {
+    // Clip to screen
+    int16_t start_x = (x < 0) ? -x : 0;
+    int16_t end_x = w;
+    if (x + w > DISPLAY_WIDTH) end_x = DISPLAY_WIDTH - x;
+    if (x >= DISPLAY_WIDTH || end_x <= start_x) return;
+
+    // Clip to strip
+    int16_t strip_end = g_strip_y0 + g_strip_h;
+    int16_t row_start = y;
+    if (row_start < g_strip_y0) row_start = g_strip_y0;
+    int16_t row_end = y + h;
+    if (row_end > strip_end) row_end = strip_end;
+    if (row_start >= row_end) return;
+
+    int16_t screen_x = x + start_x;
+
+    for (int16_t row = row_start; row < row_end; row++) {
+        int16_t src_row = row - y;
+        const uint8_t *src = &map[src_row * w + start_x];
+        uint16_t *dst = &g_strip_buf[(row - g_strip_y0) * DISPLAY_WIDTH + screen_x];
+        for (int16_t col = 0; col < end_x - start_x; col++) {
+            uint8_t region = src[col];
+            if (region != 0) {
+                dst[col] = palette[region];
+            }
+        }
+    }
+}
+
+// ── Text rendering ──────────────────────────────────────────
 
 int graphics_draw_char(int16_t x, int16_t y, char c, uint16_t color, uint16_t bg_color) {
-    if (x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT || x + FONT_WIDTH < 0 || y + FONT_HEIGHT < 0) {
+    if (x >= DISPLAY_WIDTH || x + FONT_WIDTH < 0) {
+        return x + FONT_WIDTH;
+    }
+
+    // Quick reject: entire character outside strip
+    if (y + FONT_HEIGHT <= g_strip_y0 || y >= g_strip_y0 + g_strip_h) {
         return x + FONT_WIDTH;
     }
 
@@ -80,16 +148,15 @@ int graphics_draw_char(int16_t x, int16_t y, char c, uint16_t color, uint16_t bg
         int16_t px = x + col;
         if (px < 0 || px >= DISPLAY_WIDTH) continue;
 
-        uint16_t *p = fb_pixel(px, y);
-        for (int16_t row = 0; row < FONT_HEIGHT; row++, p += DISPLAY_WIDTH) {
+        int16_t strip_end = g_strip_y0 + g_strip_h;
+        for (int16_t row = 0; row < FONT_HEIGHT; row++) {
             int16_t py = y + row;
-            if (py >= 0 && py < DISPLAY_HEIGHT) {
-                *p = (line & (1 << row)) ? color : bg_color;
-            }
+            if (py < g_strip_y0 || py >= strip_end) continue;
+            uint16_t *p = &g_strip_buf[(py - g_strip_y0) * DISPLAY_WIDTH + px];
+            *p = (line & (1 << row)) ? color : bg_color;
         }
     }
 
-    display_mark_dirty();
     return x + FONT_WIDTH;
 }
 
@@ -138,7 +205,7 @@ int graphics_draw_text(int16_t x, int16_t y, const char *text, uint16_t color, u
     return cur_y + FONT_HEIGHT;
 }
 
-// ── Rainbow ───────────────────────────────────────────────────
+// ── Rainbow ─────────────────────────────────────────────────
 
 static uint16_t hue_to_color(int hue) {
     int h = hue % 360;
@@ -161,7 +228,7 @@ static uint16_t hue_to_color(int hue) {
     return COLOR(r, g, b);
 }
 
-// ── Rounded rectangle ────────────────────────────────────────
+// ── Rounded rectangle ──────────────────────────────────────
 
 void graphics_draw_rounded_rect(int16_t x, int16_t y, int16_t w, int16_t h,
                                 uint16_t bg, uint16_t border) {
@@ -203,7 +270,7 @@ void graphics_draw_rounded_rect(int16_t x, int16_t y, int16_t w, int16_t h,
     graphics_fill_rect(x + r, y + h - 1, w - 2 * r, 1, border);
 }
 
-// ── Rainbow ───────────────────────────────────────────────────
+// ── Rainbow ─────────────────────────────────────────────────
 
 void graphics_draw_rainbow_h(int16_t x, int16_t y, int16_t w, int16_t h) {
     if (x < 0) { w += x; x = 0; }
@@ -212,15 +279,20 @@ void graphics_draw_rainbow_h(int16_t x, int16_t y, int16_t w, int16_t h) {
     if (y + h > DISPLAY_HEIGHT) h = DISPLAY_HEIGHT - y;
     if (w <= 0 || h <= 0) return;
 
+    // Clip to strip
+    int16_t strip_end = g_strip_y0 + g_strip_h;
+    int16_t row_start = y;
+    if (row_start < g_strip_y0) row_start = g_strip_y0;
+    int16_t row_end = y + h;
+    if (row_end > strip_end) row_end = strip_end;
+    if (row_start >= row_end) return;
+
     int16_t denom = (w > 1) ? (w - 1) : 1;
     for (int16_t col = 0; col < w; col++) {
         int hue = (360 * col) / denom;
         uint16_t color = hue_to_color(hue);
-        uint16_t *p = fb_pixel(x + col, y);
-        for (int16_t row = 0; row < h; row++) {
-            *p = color;
-            p += DISPLAY_WIDTH;
+        for (int16_t row = row_start; row < row_end; row++) {
+            g_strip_buf[(row - g_strip_y0) * DISPLAY_WIDTH + x + col] = color;
         }
     }
-    display_mark_dirty();
 }

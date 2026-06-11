@@ -1,7 +1,6 @@
 #include "buttons.h"
 #include "gamepad/controller.h"
 #include "display.h"
-#include "graphics.h"
 #include "pet/pet_state.h"
 #include "pet/pet_sprite.h"
 #include "ui/ui.h"
@@ -20,16 +19,7 @@ static const char *TAG = "main";
 
 /* ── Display task: render loop ────────────────────────────────── */
 static void display_task(void *param) {
-
-    pet_mood_t last_mood = PET_MOOD_COUNT;
-    pet_stats_t last_stats = { -1, -1, -1, 0 };
-    bool last_ctrl_conn = false;
-    bool last_sleep = false;
-
     while (1) {
-        graphics_fill(COLOR_BLACK);
-
-        ui_draw_static();
         controller_poll();
 
         /* ── Input: Action button → current care ──────────── */
@@ -66,50 +56,9 @@ static void display_task(void *param) {
             }
         }
 
-        /* ── Pet state ────────────────────────────────────── */
-        pet_mood_t mood = pet_get_mood();
-        const pet_stats_t *stats = pet_get_stats();
-        bool sleeping = pet_is_sleeping();
+        /* ── Render frame (strip-based, all drawing in callback) ── */
+        display_render_frame(ui_render_strip);
 
-        /* ── Redraw pet sprite on mood/sleep change ────────── */
-        if (mood != last_mood || sleeping != last_sleep) {
-            pet_sprite_draw(UI_PET_X, UI_PET_Y, sleeping ? PET_MOOD_SLEEPY : mood, sleeping);
-            last_mood = mood;
-            last_sleep = sleeping;
-        } else {
-            /* tick animation even when mood unchanged */
-            pet_sprite_draw(UI_PET_X, UI_PET_Y, mood, sleeping);
-        }
-
-        /* ── Redraw stat bars ─────────────────────────────── */
-        if (stats->hunger != last_stats.hunger ||
-            stats->happiness != last_stats.happiness ||
-            stats->energy != last_stats.energy) {
-            ui_draw_stat_bars(stats);
-            last_stats = *stats;
-        }
-
-        /* ── Mood label ───────────────────────────────────── */
-        ui_draw_mood_label(mood, sleeping);
-
-        /* ── Gamepad debug ────────────────────────────────── */
-        bool ctrl_conn = controller_is_connected();
-        if (ctrl_conn) {
-            gamepad_state_t gs = controller_get_state();
-            ui_draw_gamepad_debug(&gs);
-        } else if (last_ctrl_conn) {
-            ui_clear_gamepad_debug();
-        }
-
-        if (ctrl_conn != last_ctrl_conn) {
-            last_ctrl_conn = ctrl_conn;
-            ui_draw_ctrl_status(ctrl_conn);
-        }
-
-        /* ── Speech bubble overlay ────────────────────────── */
-        ui_speech_render();
-
-        display_flush();
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
@@ -156,6 +105,9 @@ void app_main(void) {
 
     /* ── Pet state (restores NVS, starts decay timer) ─────── */
     pet_init();
+
+    /* ── Pre-compute sprite region maps ──────────────────── */
+    pet_sprite_gen_regions();
 
     /* ── Display task ─────────────────────────────────────── */
     xTaskCreate(display_task, "display", 8192, NULL, 5, NULL);

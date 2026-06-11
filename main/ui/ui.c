@@ -1,34 +1,57 @@
 #include "ui.h"
+#include "pet/pet_sprite.h"
 #include "graphics.h"
 #include <string.h>
 #include <stdio.h>
 
-/* ── Static UI ────────────────────────────────────────────── */
+/* ── Master strip callback ────────────────────────────────── */
 
-void ui_draw_static(void) {
+void ui_render_strip(int16_t y0, int16_t y1) {
+    (void)y1; /* y1 not needed — graphics primitives clip to strip via context */
 
-    /* title + name */
+    /* ── Title + underline ── */
     char title[48];
     snprintf(title, sizeof(title), "ESP-PET  — %s", pet_get_name());
     graphics_draw_text(10, UI_TITLE_Y, title, COLOR_WHITE, COLOR_BLACK, 0);
     graphics_fill_rect(10, UI_UNDERLINE_Y, 220, 2, COLOR_WHITE);
 
-    /* mood bar */
+    /* ── Mood bar background ── */
     graphics_fill_rect(10, UI_MOOD_Y, 220, UI_MOOD_H, COLOR_DARK_GRAY);
     graphics_draw_text(16, UI_MOOD_Y + 5, "Mood:", COLOR_WHITE, COLOR_DARK_GRAY, 0);
 
-    /* hints */
+    /* ── Hints ── */
     graphics_draw_text(10, UI_HINT_Y,
         "Btn/A:action  B:talk  D-Pad L/R:cycle", COLOR_GREEN, COLOR_BLACK, 0);
 
-    /* controller status placeholder */
-    graphics_draw_text(10, UI_CTRL_Y, "Ctrl: searching...", COLOR_GRAY, COLOR_BLACK, 0);
+    /* ── Rainbow bar ── */
+    graphics_draw_rainbow_h(0, UI_GRAD_Y, DISPLAY_WIDTH, UI_GRAD_H);
 
-    /* initial stat bars */
+    /* ── Pet sprite ── */
+    pet_mood_t mood = pet_get_mood();
+    bool sleeping = pet_is_sleeping();
+    pet_sprite_draw(UI_PET_X, UI_PET_Y, sleeping ? PET_MOOD_SLEEPY : mood, sleeping);
+
+    /* ── Stat bars + care hint ── */
     ui_draw_stat_bars(pet_get_stats());
 
-    /* rainbow bar */
-    graphics_draw_rainbow_h(0, UI_GRAD_Y, DISPLAY_WIDTH, UI_GRAD_H);
+    /* ── Mood label ── */
+    ui_draw_mood_label(mood, sleeping);
+
+    /* ── Controller status ── */
+    bool ctrl_conn = controller_is_connected();
+    graphics_fill_rect(10, UI_CTRL_Y, 220, 10, COLOR_BLACK);
+    graphics_draw_text(10, UI_CTRL_Y,
+        ctrl_conn ? "Ctrl: connected" : "Ctrl: searching...",
+        ctrl_conn ? COLOR_GREEN : COLOR_GRAY, COLOR_BLACK, 0);
+
+    /* ── Gamepad debug ── */
+    if (ctrl_conn) {
+        gamepad_state_t gs = controller_get_state();
+        ui_draw_gamepad_debug(&gs);
+    }
+
+    /* ── Speech bubble overlay ── */
+    ui_speech_render();
 }
 
 /* ── Stat bars ────────────────────────────────────────────── */
@@ -79,7 +102,7 @@ void ui_draw_mood_label(pet_mood_t mood, bool sleeping) {
 
 /* ── Gamepad debug ────────────────────────────────────────── */
 
-#define DBG_X UI_DEBUG_Y
+#define DBG_Y UI_DEBUG_Y
 #define DBG_W 220
 
 static const char *btn_names[] = {
@@ -92,7 +115,7 @@ static const char *btn_names[] = {
 
 void ui_draw_gamepad_debug(const gamepad_state_t *gs) {
     char buf[64];
-    int y = DBG_X;
+    int y = DBG_Y;
 
     graphics_fill_rect(10, y, DBG_W, UI_DEBUG_H, COLOR_BLACK);
     graphics_draw_text(10, y, "--- Gamepad ---", COLOR_CYAN, COLOR_BLACK, 0);
@@ -130,22 +153,11 @@ void ui_draw_gamepad_debug(const gamepad_state_t *gs) {
 }
 
 void ui_clear_gamepad_debug(void) {
-    graphics_fill_rect(10, DBG_X, DBG_W, UI_DEBUG_H, COLOR_BLACK);
-}
-
-void ui_draw_ctrl_status(bool connected) {
-    graphics_fill_rect(10, UI_CTRL_Y, 220, 10, COLOR_BLACK);
-    graphics_draw_text(10, UI_CTRL_Y,
-        connected ? "Ctrl: connected" : "Ctrl: searching...",
-        connected ? COLOR_GREEN : COLOR_GRAY, COLOR_BLACK, 0);
+    graphics_fill_rect(10, DBG_Y, DBG_W, UI_DEBUG_H, COLOR_BLACK);
 }
 
 /* ── Speech bubble rendering ──────────────────────────────── */
 
-/**
- * Render the speech bubble overlay. Called each frame by display task.
- * Redraws the bubble and wrapped text.
- */
 void ui_speech_render(void) {
     if (!ui_speech_visible()) return;
 
@@ -156,9 +168,6 @@ void ui_speech_render(void) {
 
     /*
      * Calculate required height by simulating text wrap.
-     * We call graphics_draw_text with the actual string later,
-     * but here we roughly estimate: max_chars_per_line ≈ text_w / FONT_WIDTH,
-     * and total lines ≈ len / chars_per_line.
      */
     int chars_per_line = text_w / 6; /* FONT_WIDTH=6 */
     const char *text = ui_speech_text();

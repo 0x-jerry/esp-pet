@@ -6,7 +6,6 @@
 #include "driver/spi_master.h"
 #include "driver/ledc.h"
 #include "driver/gpio.h"
-#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -31,19 +30,8 @@ static const char *TAG = "display";
 static esp_lcd_panel_io_handle_t io_handle = NULL;
 static esp_lcd_panel_handle_t panel_handle = NULL;
 
-// Framebuffer
-static uint16_t *framebuffer = NULL;
-
-// Strip height for flush (1/10 of display → ~11 KiB swap buffer)
-#define FLUSH_STRIP_H (DISPLAY_HEIGHT / 10)
-
-// DMA-safe swap buffer (allocated once in display_init)
-static uint16_t *swap_buf = NULL;
-
-// Skips flush when nothing changed
-static bool dirty = false;
-
-void display_mark_dirty(void) { dirty = true; }
+// DMA-safe strip buffer — the sole pixel buffer (11.25 KB)
+static uint16_t *strip_buf = NULL;
 
 // --- Backlight ---
 
@@ -87,7 +75,7 @@ void display_init(void) {
         .miso_io_num     = -1, // Not used
         .quadwp_io_num   = -1,
         .quadhd_io_num   = -1,
-        .max_transfer_sz = DISPLAY_WIDTH * DISPLAY_HEIGHT * 2,
+        .max_transfer_sz = DISPLAY_WIDTH * DISPLAY_STRIP_H * 2,
     };
     ESP_ERROR_CHECK(spi_bus_initialize(LCD_HOST, &bus_cfg, SPI_DMA_CH_AUTO));
 
@@ -128,53 +116,37 @@ void display_init(void) {
     // Turn on display
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
 
-    // Allocate framebuffer & swap buffer
-    size_t fb_size = DISPLAY_WIDTH * DISPLAY_HEIGHT * sizeof(uint16_t);
-    framebuffer = heap_caps_malloc(fb_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (framebuffer == NULL) {
-        framebuffer = heap_caps_malloc(fb_size, MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
-    }
-    if (framebuffer == NULL) {
-        framebuffer = malloc(fb_size);
-    }
-    assert(framebuffer != NULL);
-    memset(framebuffer, 0, fb_size);
+    // Allocate DMA-safe strip buffer (the sole pixel buffer — no full framebuffer)
+    strip_buf = spi_bus_dma_memory_alloc(LCD_HOST,
+                          DISPLAY_WIDTH * DISPLAY_STRIP_H * sizeof(uint16_t), 0);
+    assert(strip_buf != NULL);
 
-    swap_buf = spi_bus_dma_memory_alloc(LCD_HOST,
-                          DISPLAY_WIDTH * FLUSH_STRIP_H * sizeof(uint16_t), 0);
-    assert(swap_buf != NULL);
-
-    ESP_LOGI(TAG, "Display initialized. FB at %p, size %zu", framebuffer, fb_size);
+    ESP_LOGI(TAG, "Display initialized. Strip buf at %p, size %zu",
+             strip_buf, DISPLAY_WIDTH * DISPLAY_STRIP_H * sizeof(uint16_t));
 }
 
-uint16_t *display_get_framebuffer(void) {
-    return framebuffer;
+uint16_t *display_get_strip_buf(void) {
+    return strip_buf;
 }
 
+// --- Strip-Based Frame Rendering ---
 
-// --- Flush to Display ---
-
-void display_flush(void) {
-    if (!dirty) return;
-
-    // Stream framebuffer in strips for DMA compatibility.
-    for (int16_t y0 = 0; y0 < DISPLAY_HEIGHT; y0 += FLUSH_STRIP_H) {
-        int16_t strip_h = FLUSH_STRIP_H;
+void display_render_frame(void (*render_cb)(int16_t y0, int16_t y1)) {
+    for (int16_t y0 = 0; y0 < DISPLAY_HEIGHT; y0 += DISPLAY_STRIP_H) {
+        int16_t strip_h = DISPLAY_STRIP_H;
         if (y0 + strip_h > DISPLAY_HEIGHT) strip_h = DISPLAY_HEIGHT - y0;
 
-        // Copy strip rows to DMA-safe swap buffer
-        size_t strip_pixels = (size_t)DISPLAY_WIDTH * strip_h;
-        const uint16_t *src = &framebuffer[y0 * DISPLAY_WIDTH];
-        for (size_t i = 0; i < strip_pixels; i++) {
-            swap_buf[i] = src[i];
-        }
+        // Zero the strip buffer (black background for this strip)
+        memset(strip_buf, 0, (size_t)DISPLAY_WIDTH * strip_h * sizeof(uint16_t));
 
+        // Let the callback draw everything overlapping [y0, y0+strip_h)
+        render_cb(y0, y0 + strip_h);
+
+        // DMA the strip directly to the LCD (zero-copy from strip_buf)
         ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(panel_handle,
-                          0, y0, DISPLAY_WIDTH, y0 + strip_h, swap_buf));
-        
-        // Wait a bit to avoid flooding the LCD with too many commands at once.
+                          0, y0, DISPLAY_WIDTH, y0 + strip_h, strip_buf));
+
+        // Throttle to avoid flooding the LCD command queue
         vTaskDelay(pdMS_TO_TICKS(5));
     }
-
-    dirty = false;
 }

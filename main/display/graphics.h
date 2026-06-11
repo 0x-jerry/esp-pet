@@ -19,25 +19,52 @@
 #define COLOR_DARK_GRAY COLOR(64, 64, 64)
 
 /**
- * Fill the entire framebuffer with a solid color.
+ * Begin a strip rendering context. All subsequent drawing calls operate
+ * on the given strip buffer and clip to rows [y0, y0+strip_h).
+ *
+ * @param buf      Pointer to the DMA-safe strip buffer.
+ * @param y0       Top row of this strip in screen coordinates.
  */
-void graphics_fill(uint16_t color);
+void graphics_begin_strip(uint16_t *buf, int16_t y0);
 
 /**
- * Draw a filled rectangle in the framebuffer.
+ * End the current strip rendering context.
+ */
+void graphics_end_strip(void);
+
+/**
+ * Draw a filled rectangle in the current strip.
+ * Automatically clips to strip boundaries; out-of-strip rows are no-ops.
  */
 void graphics_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
 
 /**
- * Draw a pixel in the framebuffer.
+ * Draw a pixel in the current strip buffer.
+ * Silently clips out-of-bounds or out-of-strip coordinates.
  */
 void graphics_draw_pixel(int16_t x, int16_t y, uint16_t color);
 
 /**
- * Copy a sprite bitmap into the framebuffer.
+ * Copy a sprite bitmap into the current strip.
  * data must be an array of uint16_t pixels, row-major.
+ * Only rows overlapping the current strip are drawn.
  */
 void graphics_draw_sprite(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t *data);
+
+/**
+ * Draw a sprite using a region map + palette.
+ *
+ * The region map is a uint8_t array of size w×h, where each value is an index
+ * into the 16-entry palette. Index 0 is transparent (skipped).
+ * Only rows overlapping the current strip are drawn.
+ *
+ * @param x, y     Top-left screen position.
+ * @param w, h     Dimensions of the region map.
+ * @param map      uint8_t[w*h] region ID per pixel.
+ * @param palette  uint16_t[16] color lookup table. palette[0] is transparent.
+ */
+void graphics_draw_sprite_region(int16_t x, int16_t y, int16_t w, int16_t h,
+                                 const uint8_t *map, const uint16_t *palette);
 
 /**
  * Draw a single character using the built-in 6x8 font at (x, y).
