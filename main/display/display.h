@@ -45,3 +45,9 @@ uint16_t *display_get_strip_buf(void);
  * @param render_cb  Called once per strip with the strip's row range [y0, y1).
  */
 void display_render_frame(void (*render_cb)());
+
+/**
+ * Get the wall-clock duration of the last completed display_render_frame()
+ * call, in microseconds. Useful for FPS / performance overlays.
+ */
+uint32_t display_get_last_frame_us(void);

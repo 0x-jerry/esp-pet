@@ -41,6 +41,9 @@ void ui_draw_mood_bg(void);
 /** Draw hint text (button help line). */
 void ui_draw_hints(void);
 
+/** Draw frame-time overlay at the top-right corner (e.g. "16.7ms"). */
+void ui_draw_fps(uint32_t frame_us);
+
 /** Draw the rainbow gradient bar at the bottom. */
 void ui_draw_rainbow_bar(void);
 

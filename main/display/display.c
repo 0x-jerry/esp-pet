@@ -8,6 +8,7 @@
 #include "driver/ledc.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -32,17 +33,29 @@ static const char *TAG = "display";
 static esp_lcd_panel_io_handle_t io_handle = NULL;
 static esp_lcd_panel_handle_t panel_handle = NULL;
 
-// DMA-safe strip buffer (~11.25 KB)
-static uint16_t *strip_buf = NULL;
-static SemaphoreHandle_t buf_sem = NULL;  // Binary semaphore: buffer free/busy
+// Double-buffer ping-pong context
+// ISR reads from the FIFO to know _which_ buffer's DMA just completed.
+typedef struct {
+    SemaphoreHandle_t sem[2];      // one binary semaphore per buffer
+    int               pending[2];  // FIFO ring: buffer indices with DMA in flight
+    volatile int      put;         // FIFO write cursor (render loop only)
+    volatile int      get;         // FIFO read cursor  (ISR only)
+} dbl_ctx_t;
 
-// ISR callback: called when a color DMA transaction completes
+static uint16_t *strip_buf[2] = {NULL, NULL};
+static dbl_ctx_t dbl_ctx;
+static uint32_t g_last_frame_us = 0;
+
+// ISR: called when ANY color DMA transaction completes.
+// Read from the FIFO to learn which buffer's semaphore to release.
 static bool IRAM_ATTR on_color_trans_done(esp_lcd_panel_io_handle_t panel_io,
                                            esp_lcd_panel_io_event_data_t *edata,
                                            void *user_ctx) {
-    SemaphoreHandle_t sem = (SemaphoreHandle_t)user_ctx;
+    dbl_ctx_t *ctx = (dbl_ctx_t *)user_ctx;
+    int idx = ctx->pending[ctx->get];
+    ctx->get = (ctx->get + 1) % 2;
     BaseType_t high_task_woken = pdFALSE;
-    xSemaphoreGiveFromISR(sem, &high_task_woken);
+    xSemaphoreGiveFromISR(ctx->sem[idx], &high_task_woken);
     return high_task_woken == pdTRUE;
 }
 
@@ -92,10 +105,14 @@ void display_init(void) {
     };
     ESP_ERROR_CHECK(spi_bus_initialize(LCD_HOST, &bus_cfg, SPI_DMA_CH_AUTO));
 
-    // Create binary semaphore: buffer initially free
-    buf_sem = xSemaphoreCreateBinary();
-    assert(buf_sem != NULL);
-    xSemaphoreGive(buf_sem);
+    // Create two binary semaphores, one per buffer. Both initially free.
+    for (int i = 0; i < 2; i++) {
+        dbl_ctx.sem[i] = xSemaphoreCreateBinary();
+        assert(dbl_ctx.sem[i] != NULL);
+        xSemaphoreGive(dbl_ctx.sem[i]);
+    }
+    dbl_ctx.put = 0;
+    dbl_ctx.get = 0;
 
     // Panel IO (SPI)
     esp_lcd_panel_io_spi_config_t io_cfg = {
@@ -105,7 +122,7 @@ void display_init(void) {
         .pclk_hz         = LCD_PCLK_HZ,
         .trans_queue_depth = 10,
         .on_color_trans_done = on_color_trans_done,
-        .user_ctx        = buf_sem,
+        .user_ctx        = &dbl_ctx,
         .lcd_cmd_bits    = 8,
         .lcd_param_bits  = 8,
     };
@@ -136,46 +153,73 @@ void display_init(void) {
     // Turn on display
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
 
-    // Allocate DMA-safe strip buffer
-    strip_buf = spi_bus_dma_memory_alloc(LCD_HOST,
-                          DISPLAY_WIDTH * DISPLAY_STRIP_H * sizeof(uint16_t), 0);
-    assert(strip_buf != NULL);
+    // Allocate two DMA-safe strip buffers for ping-pong rendering
+    for (int i = 0; i < 2; i++) {
+        strip_buf[i] = spi_bus_dma_memory_alloc(LCD_HOST,
+                              DISPLAY_WIDTH * DISPLAY_STRIP_H * sizeof(uint16_t), 0);
+        assert(strip_buf[i] != NULL);
+    }
 
-    ESP_LOGI(TAG, "Display initialized. Strip buf at %p, size %zu",
-             strip_buf, DISPLAY_WIDTH * DISPLAY_STRIP_H * sizeof(uint16_t));
+    ESP_LOGI(TAG, "Display initialized. Strip bufs at %p / %p, size %zu each",
+             strip_buf[0], strip_buf[1], DISPLAY_WIDTH * DISPLAY_STRIP_H * sizeof(uint16_t));
 }
 
 uint16_t *display_get_strip_buf(void) {
-    return strip_buf;
+    return strip_buf[0];
 }
 
-// --- Strip-Based Frame Rendering ---
+// --- Strip-Based Frame Rendering (Double-Buffer Ping-Pong) ---
+//
+//  ping-pong timeline (two buffers, two semaphores, 2-slot FIFO):
+//
+//    Strip 0: Take sem[0] → draw  buf[0] → DMA buf[0] ──────────────┐
+//    Strip 1:                Take sem[1] → draw  buf[1] → DMA buf[1] │ DMA runs
+//             CPU drawing buf[1] while buf[0] is on the SPI bus      │ in bg
+//    Strip 2: Take sem[0] ← ISR gives sem[0] ────────────────────────┘
+//             …
 
 void display_render_frame(void (*render_cb)()) {
+    int64_t t0 = esp_timer_get_time();
+    int idx = 0;
+
     for (int16_t y0 = 0; y0 < DISPLAY_HEIGHT; y0 += DISPLAY_STRIP_H) {
         int16_t strip_h = DISPLAY_STRIP_H;
         if (y0 + strip_h > DISPLAY_HEIGHT) strip_h = DISPLAY_HEIGHT - y0;
 
-        // Wait until the buffer is free (previous DMA completed)
-        xSemaphoreTake(buf_sem, portMAX_DELAY);
+        // Wait until buffer[idx] is free (its previous DMA completed)
+        xSemaphoreTake(dbl_ctx.sem[idx], portMAX_DELAY);
 
-        // Zero the strip buffer (black background for this strip)
-        memset(strip_buf, 0, (size_t)DISPLAY_WIDTH * strip_h * sizeof(uint16_t));
+        // Zero this strip in the current buffer
+        memset(strip_buf[idx], 0, (size_t)DISPLAY_WIDTH * strip_h * sizeof(uint16_t));
 
-        // Set strip context so all graphics_* calls target this strip
-        graphics_begin_strip(strip_buf, y0, strip_h);
-
-        // Let the callback draw everything overlapping [y0, y0+strip_h)
+        // Draw the strip into buffer[idx]
+        graphics_begin_strip(strip_buf[idx], y0, strip_h);
         render_cb();
-
         graphics_end_strip();
 
-        // DMA the strip to the LCD (non-blocking; ISR gives sem back when done)
+        // Record which buffer is now in flight, then kick off DMA
+        dbl_ctx.pending[dbl_ctx.put] = idx;
+        dbl_ctx.put = (dbl_ctx.put + 1) % 2;
         ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(panel_handle,
-                          0, y0, DISPLAY_WIDTH, y0 + strip_h, strip_buf));
+                          0, y0, DISPLAY_WIDTH, y0 + strip_h, strip_buf[idx]));
+
+        // Ping-pong to the other buffer while DMA runs in background
+        idx ^= 1;
     }
 
-    // Wait for the final DMA to finish before returning
-    xSemaphoreTake(buf_sem, portMAX_DELAY);
-    xSemaphoreGive(buf_sem);
+    // Wait for both in-flight DMAs to complete, then return tokens
+    xSemaphoreTake(dbl_ctx.sem[0], portMAX_DELAY);
+    xSemaphoreTake(dbl_ctx.sem[1], portMAX_DELAY);
+    xSemaphoreGive(dbl_ctx.sem[0]);
+    xSemaphoreGive(dbl_ctx.sem[1]);
+
+    // Reset FIFO cursors for next frame
+    dbl_ctx.put = 0;
+    dbl_ctx.get = 0;
+
+    g_last_frame_us = (uint32_t)(esp_timer_get_time() - t0);
+}
+
+uint32_t display_get_last_frame_us(void) {
+    return g_last_frame_us;
 }

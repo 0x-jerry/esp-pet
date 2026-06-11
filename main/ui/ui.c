@@ -1,5 +1,6 @@
 #include "ui.h"
 #include "graphics.h"
+#include "font.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -24,6 +25,22 @@ void ui_draw_hints(void) {
 
 void ui_draw_rainbow_bar(void) {
     graphics_draw_rainbow_h(0, UI_GRAD_Y, DISPLAY_WIDTH, UI_GRAD_H);
+}
+
+/* ── FPS overlay ──────────────────────────────────────────── */
+
+void ui_draw_fps(uint32_t frame_us) {
+    char buf[16];
+    // Format as ms with 1 decimal, e.g. "16.7ms" or "33.3ms"
+    snprintf(buf, sizeof(buf), "%u.%ums",
+             (unsigned)(frame_us / 1000),
+             (unsigned)((frame_us % 1000) / 100));
+
+    // Right-aligned at top-right, same row as title
+    int16_t text_w = (int16_t)strlen(buf) * FONT_WIDTH;
+    int16_t x = DISPLAY_WIDTH - 8 - text_w;
+
+    graphics_draw_text_fg(x, UI_TITLE_Y, buf, COLOR_GREEN, 0);
 }
 
 void ui_draw_ctrl_status(bool connected) {

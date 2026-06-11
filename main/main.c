@@ -5,6 +5,7 @@
 #include "pet/pet_state.h"
 #include "pet/pet_sprite.h"
 #include "ui/ui.h"
+#include "ui/ui_state.h"
 #include "gamepad/xbox_ble.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
@@ -27,6 +28,7 @@ static const char *TAG = "main";
 static void render_strip() {
     /* ── Static elements ── */
     ui_draw_title();
+    ui_draw_fps(display_get_last_frame_us());
     ui_draw_mood_bg();
     ui_draw_hints();
     ui_draw_rainbow_bar();
