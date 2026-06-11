@@ -24,9 +24,7 @@ static const char *TAG = "main";
  * Called by display_render_frame() once per 24-row strip.
  * Orchestrates all UI and pet rendering for the current strip.
  */
-static void render_strip(int16_t y0, int16_t y1) {
-    (void)y0; (void)y1; /* graphics primitives clip to strip via context */
-
+static void render_strip() {
     /* ── Static elements ── */
     ui_draw_title();
     ui_draw_mood_bg();

@@ -44,4 +44,4 @@ uint16_t *display_get_strip_buf(void);
  *
  * @param render_cb  Called once per strip with the strip's row range [y0, y1).
  */
-void display_render_frame(void (*render_cb)(int16_t y0, int16_t y1));
+void display_render_frame(void (*render_cb)());

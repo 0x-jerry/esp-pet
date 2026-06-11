@@ -151,7 +151,7 @@ uint16_t *display_get_strip_buf(void) {
 
 // --- Strip-Based Frame Rendering ---
 
-void display_render_frame(void (*render_cb)(int16_t y0, int16_t y1)) {
+void display_render_frame(void (*render_cb)()) {
     for (int16_t y0 = 0; y0 < DISPLAY_HEIGHT; y0 += DISPLAY_STRIP_H) {
         int16_t strip_h = DISPLAY_STRIP_H;
         if (y0 + strip_h > DISPLAY_HEIGHT) strip_h = DISPLAY_HEIGHT - y0;
@@ -166,7 +166,7 @@ void display_render_frame(void (*render_cb)(int16_t y0, int16_t y1)) {
         graphics_begin_strip(strip_buf, y0, strip_h);
 
         // Let the callback draw everything overlapping [y0, y0+strip_h)
-        render_cb(y0, y0 + strip_h);
+        render_cb();
 
         graphics_end_strip();
 
