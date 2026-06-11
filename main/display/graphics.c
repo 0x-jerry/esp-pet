@@ -130,7 +130,12 @@ void graphics_draw_sprite_region(int16_t x, int16_t y, int16_t w, int16_t h,
 
 // ── Text rendering ──────────────────────────────────────────
 
-int graphics_draw_char(int16_t x, int16_t y, char c, uint16_t color, uint16_t bg_color) {
+/**
+ * Internal: draw a single character with optional background fill.
+ * All public char-drawing functions delegate here.
+ */
+static int draw_char_impl(int16_t x, int16_t y, char c,
+                          uint16_t color, uint16_t bg_color, bool draw_bg) {
     if (x >= DISPLAY_WIDTH || x + FONT_WIDTH < 0) {
         return x + FONT_WIDTH;
     }
@@ -148,18 +153,32 @@ int graphics_draw_char(int16_t x, int16_t y, char c, uint16_t color, uint16_t bg
         int16_t px = x + col;
         if (px < 0 || px >= DISPLAY_WIDTH) continue;
 
-        for (int16_t row = 0; row < FONT_HEIGHT; row++) {
-            int16_t py = y + row;
-            if (py < g_strip_y0 || py >= strip_end) continue;
-            uint16_t *p = &g_strip_buf[(py - g_strip_y0) * DISPLAY_WIDTH + px];
-            *p = (line & (1 << row)) ? color : bg_color;
+        if (draw_bg) {
+            for (int16_t row = 0; row < FONT_HEIGHT; row++) {
+                int16_t py = y + row;
+                if (py < g_strip_y0 || py >= strip_end) continue;
+                g_strip_buf[(py - g_strip_y0) * DISPLAY_WIDTH + px] =
+                    (line & (1 << row)) ? color : bg_color;
+            }
+        } else {
+            for (int16_t row = 0; row < FONT_HEIGHT; row++) {
+                if (!(line & (1 << row))) continue;
+                int16_t py = y + row;
+                if (py < g_strip_y0 || py >= strip_end) continue;
+                g_strip_buf[(py - g_strip_y0) * DISPLAY_WIDTH + px] = color;
+            }
         }
     }
 
     return x + FONT_WIDTH;
 }
 
-int graphics_draw_text(int16_t x, int16_t y, const char *text, uint16_t color, uint16_t bg_color, int16_t max_width) {
+/**
+ * Internal: draw text with word-wrap, delegating char drawing via the bg flag.
+ */
+static int draw_text_impl(int16_t x, int16_t y, const char *text,
+                          uint16_t color, uint16_t bg_color,
+                          int16_t max_width, bool draw_bg) {
     int16_t cur_x = x;
     int16_t cur_y = y;
 
@@ -197,11 +216,21 @@ int graphics_draw_text(int16_t x, int16_t y, const char *text, uint16_t color, u
         }
 
         /* ---- 4. Draw the current character ---- */
-        cur_x = graphics_draw_char(cur_x, cur_y, c, color, bg_color);
+        cur_x = draw_char_impl(cur_x, cur_y, c, color, bg_color, draw_bg);
         text++;
     }
 
     return cur_y + FONT_HEIGHT;
+}
+
+int graphics_draw_text(int16_t x, int16_t y, const char *text,
+                       uint16_t color, uint16_t bg_color, int16_t max_width) {
+    return draw_text_impl(x, y, text, color, bg_color, max_width, true);
+}
+
+int graphics_draw_text_fg(int16_t x, int16_t y, const char *text,
+                          uint16_t color, int16_t max_width) {
+    return draw_text_impl(x, y, text, color, 0, max_width, false);
 }
 
 // ── Rainbow ─────────────────────────────────────────────────

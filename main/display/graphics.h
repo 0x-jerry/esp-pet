@@ -68,16 +68,17 @@ void graphics_draw_sprite_region(int16_t x, int16_t y, int16_t w, int16_t h,
                                  const uint8_t *map, const uint16_t *palette);
 
 /**
- * Draw a single character using the built-in 6x8 font at (x, y).
- * Returns the x position after the character (for chaining).
- */
-int graphics_draw_char(int16_t x, int16_t y, char c, uint16_t color, uint16_t bg_color);
-
-/**
  * Draw a null-terminated string with the built-in font.
  * Wraps text within the given width. Returns the y position after drawing.
  */
 int graphics_draw_text(int16_t x, int16_t y, const char *text, uint16_t color, uint16_t bg_color, int16_t max_width);
+
+/**
+ * Draw a null-terminated string with transparent background.
+ * Only foreground pixels are written; existing pixels show through.
+ * Wraps text within the given width. Returns the y position after drawing.
+ */
+int graphics_draw_text_fg(int16_t x, int16_t y, const char *text, uint16_t color, int16_t max_width);
 
 /**
  * Draw a horizontal rainbow (full hue sweep) bar.

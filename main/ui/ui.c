@@ -19,7 +19,7 @@ void ui_draw_mood_bg(void) {
 
 void ui_draw_hints(void) {
     graphics_draw_text(10, UI_HINT_Y,
-        "Btn/A:action  B:talk  D-Pad L/R:cycle", COLOR_GREEN, COLOR_BLACK, 0);
+        "A:action B:talk L/R:cycle", COLOR_GREEN, COLOR_BLACK, 0);
 }
 
 void ui_draw_rainbow_bar(void) {
@@ -41,7 +41,7 @@ void ui_draw_stat_bars(const pet_stats_t *stats) {
     /* care hint */
     graphics_fill_rect(10, y - 12, 220, 12, COLOR_BLACK);
     char hint[32];
-    snprintf(hint, sizeof(hint), "Action: %s   (cooldown)", ui_care_names[ui_care_index]);
+    snprintf(hint, sizeof(hint), "Action: %s  (cooldown)", ui_care_names[ui_care_index]);
     graphics_draw_text(10, y - 11, hint, COLOR_GRAY, COLOR_BLACK, 0);
 
     /* helper: single bar */
