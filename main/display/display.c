@@ -10,6 +10,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include <string.h>
 
 static const char *TAG = "display";
@@ -31,8 +32,19 @@ static const char *TAG = "display";
 static esp_lcd_panel_io_handle_t io_handle = NULL;
 static esp_lcd_panel_handle_t panel_handle = NULL;
 
-// DMA-safe strip buffer — the sole pixel buffer (11.25 KB)
+// DMA-safe strip buffer (~11.25 KB)
 static uint16_t *strip_buf = NULL;
+static SemaphoreHandle_t buf_sem = NULL;  // Binary semaphore: buffer free/busy
+
+// ISR callback: called when a color DMA transaction completes
+static bool IRAM_ATTR on_color_trans_done(esp_lcd_panel_io_handle_t panel_io,
+                                           esp_lcd_panel_io_event_data_t *edata,
+                                           void *user_ctx) {
+    SemaphoreHandle_t sem = (SemaphoreHandle_t)user_ctx;
+    BaseType_t high_task_woken = pdFALSE;
+    xSemaphoreGiveFromISR(sem, &high_task_woken);
+    return high_task_woken == pdTRUE;
+}
 
 // --- Backlight ---
 
@@ -80,6 +92,11 @@ void display_init(void) {
     };
     ESP_ERROR_CHECK(spi_bus_initialize(LCD_HOST, &bus_cfg, SPI_DMA_CH_AUTO));
 
+    // Create binary semaphore: buffer initially free
+    buf_sem = xSemaphoreCreateBinary();
+    assert(buf_sem != NULL);
+    xSemaphoreGive(buf_sem);
+
     // Panel IO (SPI)
     esp_lcd_panel_io_spi_config_t io_cfg = {
         .cs_gpio_num     = TFT_CS,
@@ -87,6 +104,8 @@ void display_init(void) {
         .spi_mode        = 0,
         .pclk_hz         = LCD_PCLK_HZ,
         .trans_queue_depth = 10,
+        .on_color_trans_done = on_color_trans_done,
+        .user_ctx        = buf_sem,
         .lcd_cmd_bits    = 8,
         .lcd_param_bits  = 8,
     };
@@ -117,7 +136,7 @@ void display_init(void) {
     // Turn on display
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
 
-    // Allocate DMA-safe strip buffer (the sole pixel buffer — no full framebuffer)
+    // Allocate DMA-safe strip buffer
     strip_buf = spi_bus_dma_memory_alloc(LCD_HOST,
                           DISPLAY_WIDTH * DISPLAY_STRIP_H * sizeof(uint16_t), 0);
     assert(strip_buf != NULL);
@@ -137,6 +156,9 @@ void display_render_frame(void (*render_cb)(int16_t y0, int16_t y1)) {
         int16_t strip_h = DISPLAY_STRIP_H;
         if (y0 + strip_h > DISPLAY_HEIGHT) strip_h = DISPLAY_HEIGHT - y0;
 
+        // Wait until the buffer is free (previous DMA completed)
+        xSemaphoreTake(buf_sem, portMAX_DELAY);
+
         // Zero the strip buffer (black background for this strip)
         memset(strip_buf, 0, (size_t)DISPLAY_WIDTH * strip_h * sizeof(uint16_t));
 
@@ -148,11 +170,12 @@ void display_render_frame(void (*render_cb)(int16_t y0, int16_t y1)) {
 
         graphics_end_strip();
 
-        // DMA the strip directly to the LCD (zero-copy from strip_buf)
+        // DMA the strip to the LCD (non-blocking; ISR gives sem back when done)
         ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(panel_handle,
                           0, y0, DISPLAY_WIDTH, y0 + strip_h, strip_buf));
-
-        // Throttle to avoid flooding the LCD command queue
-        vTaskDelay(pdMS_TO_TICKS(5));
     }
+
+    // Wait for the final DMA to finish before returning
+    xSemaphoreTake(buf_sem, portMAX_DELAY);
+    xSemaphoreGive(buf_sem);
 }

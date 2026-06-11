@@ -101,7 +101,8 @@ static void display_task(void *param) {
         /* ── Render frame (strip-based, all drawing in callback) ── */
         display_render_frame(render_strip);
 
-        vTaskDelay(pdMS_TO_TICKS(50));
+        // 30 fps
+        vTaskDelay(pdMS_TO_TICKS(33));
     }
 }
 
