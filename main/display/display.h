@@ -36,15 +36,17 @@ void display_set_backlight(uint8_t percent);
 uint16_t *display_get_strip_buf(void);
 
 /**
- * Render one full frame using strip-based rendering.
+ * Render one full frame using strip-based rendering with optional FPS capping.
  *
- * For each strip (0..9), the strip buffer is zeroed, then `render_cb(y0, y1)`
+ * For each strip (0..9), the strip buffer is zeroed, then `render_cb()`
  * is called so the caller can draw all elements that overlap [y0, y1).
  * After the callback returns, the strip is DMA'd to the LCD.
  *
- * @param render_cb  Called once per strip with the strip's row range [y0, y1).
+ * @param render_cb   Called once per strip (no arguments; use graphics_* APIs).
+ * @param target_fps  Target frames per second. 0 = no limit (as fast as possible).
+ *                    Typical values: 30, 60.
  */
-void display_render_frame(void (*render_cb)());
+void display_render_frame(void (*render_cb)(), uint8_t target_fps);
 
 /**
  * Get the wall-clock duration of the last completed display_render_frame()

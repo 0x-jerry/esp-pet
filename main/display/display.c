@@ -177,9 +177,7 @@ uint16_t *display_get_strip_buf(void) {
 //             CPU drawing buf[1] while buf[0] is on the SPI bus      │ in bg
 //    Strip 2: Take sem[0] ← ISR gives sem[0] ────────────────────────┘
 //             …
-
-void display_render_frame(void (*render_cb)()) {
-    int64_t t0 = esp_timer_get_time();
+static void render_frame(void (*render_cb)()) {
     int idx = 0;
 
     for (int16_t y0 = 0; y0 < DISPLAY_HEIGHT; y0 += DISPLAY_STRIP_H) {
@@ -216,8 +214,42 @@ void display_render_frame(void (*render_cb)()) {
     // Reset FIFO cursors for next frame
     dbl_ctx.put = 0;
     dbl_ctx.get = 0;
+}
+
+/**
+ * Wait until the target frame interval has elapsed since the last call.
+ * Call once per frame to cap the frame rate.
+ *
+ * @param target_fps  Target frames per second. Must be > 0.
+ */
+static void fps_limiter_wait(uint8_t target_fps) {
+    static int64_t t_last_frame_end = 0;
+    int64_t t_now = esp_timer_get_time();
+
+    if (t_last_frame_end != 0) {
+        uint32_t frame_interval_us = 1000000 / target_fps;
+        int64_t elapsed = t_now - t_last_frame_end;
+
+        if (elapsed < frame_interval_us) {
+            uint32_t sleep_ms = (frame_interval_us - (uint32_t)elapsed) / 1000;
+            if (sleep_ms > 0) {
+                vTaskDelay(pdMS_TO_TICKS(sleep_ms));
+            }
+        }
+    }
+    t_last_frame_end = esp_timer_get_time();
+}
+
+void display_render_frame(void (*render_cb)(), uint8_t target_fps) {
+    int64_t t0 = esp_timer_get_time();
+
+    render_frame(render_cb);
 
     g_last_frame_us = (uint32_t)(esp_timer_get_time() - t0);
+
+    if (target_fps > 0) {
+        fps_limiter_wait(target_fps);
+    }
 }
 
 uint32_t display_get_last_frame_us(void) {
